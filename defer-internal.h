@@ -58,12 +58,12 @@ struct deferred_cb_queue {
 	/** How many entries are in the queue? */
 	int active_count;
 
-	/** Function called when adding to the queue from another thread. */
+	/** Function called when adding to the queue from another thread. 从另一个线程添加到队列时调用的函数*/
 	void (*notify_fn)(struct deferred_cb_queue *, void *);
 	void *notify_arg;
 
 	/** Deferred callback management: a list of deferred callbacks to
-	 * run active the active events. */
+	 * run active the active events. 延迟回调管理：运行活动事件的延迟回调列表*/
 	TAILQ_HEAD (deferred_cb_list, deferred_cb) deferred_cb_list;
 };
 

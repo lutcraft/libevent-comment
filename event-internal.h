@@ -56,7 +56,19 @@ extern "C" {
 #define EV_CLOSURE_SIGNAL 1
 #define EV_CLOSURE_PERSIST 2
 
-/** Structure to define the backend of a given event_base. */
+/** Structure to define the backend of a given event_base.
+ * 后端往往指与底层操作系统交互的事件循环机制的 实现 。它负责管理
+ * I/O 操作、计时器和其他异步事件。
+ * 后端处理特定操作系统环境中如何监视和触发事件的详细信息，
+ * 使库能够跨不同平台高效工作并处理各种事件驱动的任务。
+ * 
+ * 
+ * eventop结构体代表了事件循环机制在操作系统环境中特定的实现方式。
+ * 它包含了一组函数指针，这些函数指针定义了如何监视和处理事件，
+ * 以及如何与底层操作系统。通过适当的“eventop”结构体实现交互，
+ * “libevent”能够在不同的操作系统上高效地管理事件和异步操作。
+ * 
+ */
 struct eventop {
 	/** The name of this backend. */
 	const char *name;
@@ -152,7 +164,9 @@ struct common_timeout_list {
 struct event_change;
 
 /* List of 'changes' since the last call to eventop.dispatch.  Only maintained
- * if the backend is using changesets. */
+ * if the backend is using changesets.
+ 自上次调用eventop.dispatch以来的“更改”列表。仅当后端使用changesets时才生效。
+  */
 struct event_changelist {
 	struct event_change *changes;
 	int n_changes;
@@ -171,17 +185,22 @@ struct event_base {
 	/** Function pointers and other data to describe this event_base's
 	 * backend. */
 	const struct eventop *evsel;
-	/** Pointer to backend-specific data. */
+	/** Pointer to backend-specific data.
+	 * 指向每一个初始化好的后端实例
+	 */
 	void *evbase;
 
 	/** List of changes to tell backend about at next dispatch.  Only used
-	 * by the O(1) backends. */
+	 * by the O(1) backends.
+	 * 
+	 * 在下一次事件时，告知后端的change列表。只能用O（1）复杂的后端否则影响性能。
+	 */
 	struct event_changelist changelist;
 
 	/** Function pointers used to describe the backend that this event_base
 	 * uses for signals */
 	const struct eventop *evsigsel;
-	/** Data to implement the common signal handelr code. */
+	/** Data to implement the common signal handelr code. 实现通用信号handel处理代码的数据 */
 	struct evsig_info sig;
 
 	/** Number of virtual events */
@@ -206,13 +225,14 @@ struct event_base {
 	 * reentrant invocation. */
 	int running_loop;
 
-	/* Active event management. */
+	/* Active event management. 活动事件管理 */
 	/** An array of nactivequeues queues for active events (ones that
 	 * have triggered, and whose callbacks need to be called).  Low
 	 * priority numbers are more important, and stall higher ones.
+	 * 活动事件的队列（已触发且需要调用其回调的事件）。优先级越低，事件越重要，可能会拖慢更高优先级的事件
 	 */
 	struct event_list *activequeues;
-	/** The length of the activequeues array */
+	/** The length of the activequeues array 活动事件的队列长度*/
 	int nactivequeues;
 
 	/* common timeout logic */
@@ -238,14 +258,13 @@ struct event_base {
 	/** All events that have been enabled (added) in this event_base */
 	struct event_list eventqueue;
 
-	/** Stored timeval; used to detect when time is running backwards. */
+	/** 存储时间值；用于检测时间何时倒退。 */
 	struct timeval event_tv;
 
-	/** Priority queue of events with timeouts. */
+	/** 事件优先队列.事件支持超时  */
 	struct min_heap timeheap;
 
-	/** Stored timeval: used to avoid calling gettimeofday/clock_gettime
-	 * too often. */
+	/** 缓存 timeval: 避免过于频繁地调用 gettimeofday/clock_gettime。*/
 	struct timeval tv_cache;
 
 #if defined(_EVENT_HAVE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC)
@@ -284,7 +303,7 @@ struct event_base {
 	 * to add any more. */
 	int is_notify_pending;
 	/** A socketpair used by some th_notify functions to wake up the main
-	 * thread. */
+	 * thread. 一些 th_notify 函数使用的套接字对来唤醒主线程。 */
 	evutil_socket_t th_notify_fd[2];
 	/** An event used by some th_notify functions to wake up the main
 	 * thread. */

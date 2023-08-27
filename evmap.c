@@ -60,10 +60,18 @@ struct evmap_io {
 	ev_uint16_t nwrite;
 };
 
+
+//用操作系统提供的C链表，声明链表成员结构
+//struct event_list { struct event *tqh_first; struct event * *tqh_last; }
+// TAILQ_HEAD (event_list, event);
+
 /* An entry for an evmap_signal list: notes all the events that want to know
-   when a signal triggers. */
+   when a signal triggers.
+   
+   一个事件表实例：记录了所有在一个信号被触发时，想要收到通知的event，是信号和event的映射
+    */
 struct evmap_signal {
-	struct event_list events;
+	struct event_list events;			//event_list是系统调用提供的链表成员结构
 };
 
 /* On some platforms, fds start at 0 and increment by 1 as they are

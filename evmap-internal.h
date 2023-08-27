@@ -38,8 +38,12 @@ struct event_base;
 struct event;
 
 /** Initialize an event_map for use.
+ * 初始化io evnet map表
  */
 void evmap_io_initmap(struct event_io_map* ctx);
+/** Initialize an event_map for use.
+ * 初始化信号 evnet map表
+ */
 void evmap_signal_initmap(struct event_signal_map* ctx);
 
 /** Remove all entries from an event_map.

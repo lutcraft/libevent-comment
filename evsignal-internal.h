@@ -39,7 +39,7 @@ typedef void (*ev_sighandler_t)(int);
 struct evsig_info {
 	/* Event watching ev_signal_pair[1] */
 	struct event ev_signal;
-	/* Socketpair used to send notifications from the signal handler */
+	/* Socketpair used to send notifications from the signal handler 用于从信号处理程序发送通知的套接字对*/
 	evutil_socket_t ev_signal_pair[2];
 	/* True iff we've added the ev_signal event yet. */
 	int ev_signal_added;

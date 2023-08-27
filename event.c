@@ -91,7 +91,9 @@ extern const struct eventop devpollops;
 extern const struct eventop win32ops;
 #endif
 
-/* Array of backends in order of preference. */
+/* Array of backends in order of preference. 
+	按偏好顺序排列的后端阵列
+*/
 static const struct eventop *eventops[] = {
 #ifdef _EVENT_HAVE_EVENT_PORTS
 	&evportops,
@@ -348,10 +350,10 @@ detect_monotonic(void)
  * to monotonic time?  Set this to -1 for 'never.' */
 #define CLOCK_SYNC_INTERVAL -1
 
-/** Set 'tp' to the current time according to 'base'.  We must hold the lock
- * on 'base'.  If there is a cached time, return it.  Otherwise, use
- * clock_gettime or gettimeofday as appropriate to find out the right time.
- * Return 0 on success, -1 on failure.
+/** 根据“base”将“tp”设置为当前时间。我们必须锁住
+ * “base”。如果有缓存时间，则返回。否则，使用
+ * clock_gettime 或 gettimeofday 根据需要找出正确的时间。
+ * 成功返回0，失败返回-1。
  */
 static int
 gettime(struct event_base *base, struct timeval *tp)
@@ -383,7 +385,7 @@ gettime(struct event_base *base, struct timeval *tp)
 		return (0);
 	}
 #endif
-
+	//首次进入，用操作系统的方法
 	return (evutil_gettimeofday(tp, NULL));
 }
 
@@ -500,7 +502,7 @@ event_deferred_cb_queue_init(struct deferred_cb_queue *cb)
 	TAILQ_INIT(&cb->deferred_cb_list);
 }
 
-/** Helper for the deferred_cb queue: wake up the event base. */
+/** Helper for the deferred_cb queue: wake up the event base. 延迟回调，注册到延迟回调队列，用于唤醒反应堆*/
 static void
 notify_base_cbq_callback(struct deferred_cb_queue *cb, void *baseptr)
 {
@@ -564,8 +566,10 @@ event_base_new_with_config(const struct event_config *cfg)
 		return NULL;
 	}
 	detect_monotonic();
+	//获取当前时间
 	gettime(base, &base->event_tv);
 
+	//初始化最小堆
 	min_heap_ctor(&base->timeheap);
 	TAILQ_INIT(&base->eventqueue);
 	base->sig.ev_signal_pair[0] = -1;
@@ -573,9 +577,10 @@ event_base_new_with_config(const struct event_config *cfg)
 	base->th_notify_fd[0] = -1;
 	base->th_notify_fd[1] = -1;
 
+	//初始化延迟回调函数队列
 	event_deferred_cb_queue_init(&base->defer_queue);
 	base->defer_queue.notify_fn = notify_base_cbq_callback;
-	base->defer_queue.notify_arg = base;
+	base->defer_queue.notify_arg = base;		//要唤醒的反应堆对象
 	if (cfg)
 		base->flags = cfg->flags;
 
@@ -590,7 +595,9 @@ event_base_new_with_config(const struct event_config *cfg)
 
 	for (i = 0; eventops[i] && !base->evbase; i++) {
 		if (cfg != NULL) {
-			/* determine if this backend should be avoided */
+			/* determine if this backend should be avoided
+				配置屏蔽的后端不处理
+			 */
 			if (event_config_is_avoided_method(cfg,
 				eventops[i]->name))
 				continue;
@@ -599,16 +606,20 @@ event_base_new_with_config(const struct event_config *cfg)
 				continue;
 		}
 
-		/* also obey the environment variables */
+		/* also obey the environment variables
+			环境变量屏蔽的后端不处理
+		 */
 		if (should_check_environment &&
 		    event_is_method_disabled(eventops[i]->name))
 			continue;
 
+		//对每个后端对象进行初始化
 		base->evsel = eventops[i];
 
 		base->evbase = base->evsel->init(base);
 	}
 
+	//后端初始化失败了
 	if (base->evbase == NULL) {
 		event_warnx("%s: no event mechanism available",
 		    __func__);
@@ -620,7 +631,8 @@ event_base_new_with_config(const struct event_config *cfg)
 	if (evutil_getenv("EVENT_SHOW_METHOD"))
 		event_msgx("libevent using: %s", base->evsel->name);
 
-	/* allocate a single active event queue */
+	/* allocate a single active event queue
+	分配一个活动事件队列 */
 	if (event_base_priority_init(base, 1) < 0) {
 		event_base_free(base);
 		return NULL;
@@ -628,7 +640,14 @@ event_base_new_with_config(const struct event_config *cfg)
 
 	/* prepare for threading */
 
+
+//_EVENT_DISABLE_THREAD_SUPPORT宏用于禁用库内的线程支持。
+//定义此宏后，它会阻止“libevent”使用任何与线程相关的功能或同步机制。
+//如果您想要在不需要线程支持的单线程环境中构建或使用该库，
+//并且想要减少与线程相关代码相关的开销，这可能会很有用。通过定义此宏，
+//您实际上禁用了“libevent”可能提供的任何与线程相关的功能，从而使该库适合不使用线程的环境。
 #ifndef _EVENT_DISABLE_THREAD_SUPPORT
+	//不使用多线程
 	if (EVTHREAD_LOCKING_ENABLED() &&
 	    (!cfg || !(cfg->flags & EVENT_BASE_FLAG_NOLOCK))) {
 		int r;
@@ -646,6 +665,7 @@ event_base_new_with_config(const struct event_config *cfg)
 #endif
 
 #ifdef WIN32
+//在windows系统上
 	if (cfg && (cfg->flags & EVENT_BASE_FLAG_STARTUP_IOCP))
 		event_base_start_iocp(base, cfg->n_cpus_hint);
 #endif
@@ -1015,6 +1035,7 @@ event_base_priority_init(struct event_base *base, int npriorities)
 	if (npriorities == base->nactivequeues)
 		return (0);
 
+	//重新初始化会导致原本的事件队列被清空
 	if (base->nactivequeues) {
 		mm_free(base->activequeues);
 		base->nactivequeues = 0;
