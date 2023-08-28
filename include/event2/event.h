@@ -914,6 +914,7 @@ int event_base_once(struct event_base *, evutil_socket_t, short, event_callback_
 
 /**
   Add an event to the set of pending events.
+  将一个事件加入事件队列中
 
   The function event_add() schedules the execution of the ev event when the
   event specified in event_assign()/event_new() occurs, or when the time
@@ -924,9 +925,12 @@ int event_base_once(struct event_base *, evutil_socket_t, short, event_callback_
   and may not be used
   in calls to event_assign() until it is no longer pending.
 
+函数event_add（）在event_assign（）/event_new（）中指定的事件发生时，或在timeout中指定的时间已过时，调度ev事件的执行。如果atimeout为NULL，则不会发生超时，并且只有在发生匹配事件时才会调用该函数。ev参数中的事件必须已由event_assign（）或event_new（）初始化，并且在不再挂起之前不能在对event_assigne（）的调用中使用。
+
   If the event in the ev argument already has a scheduled timeout, calling
   event_add() replaces the old timeout with the new one, or clears the old
   timeout if the timeout argument is NULL.
+如果ev参数中的事件已安排超时，则调用 event_add（）将旧超时替换为新超时，或清除旧超时timeout（如果timeout参数为NULL）。
 
   @param ev an event struct initialized via event_set()
   @param timeout the maximum amount of time to wait for the event, or NULL

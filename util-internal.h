@@ -178,15 +178,24 @@ int evutil_ersatz_socketpair(int, int , int, evutil_socket_t[]);
 int evutil_resolve(int family, const char *hostname, struct sockaddr *sa,
     ev_socklen_t *socklen, int port);
 
+/**
+ * 获取环境变量，是对系统调用getenv的封装
+ * 
+*/
 const char *evutil_getenv(const char *name);
 
 long _evutil_weakrand(void);
 
 /* Evaluates to the same boolean value as 'p', and hints to the compiler that
- * we expect this value to be false. */
+ * we expect this value to be false. 
+ 		__buildin_expect(x, a)意味着很可能x==a,
+		利用!! 确保表达式的返回值一定是0或者1
+ * 计算为与“p”相同的布尔值，并向编译器提示我们希望此值为false。
+ */
 #if defined(__GNUC__) && __GNUC__ >= 3         /* gcc 3.0 or later */
 #define EVUTIL_UNLIKELY(p) __builtin_expect(!!(p),0)
 #else
+//不支持就单纯给个p吧
 #define EVUTIL_UNLIKELY(p) (p)
 #endif
 

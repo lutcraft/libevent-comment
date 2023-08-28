@@ -4,9 +4,15 @@
 #
 # See LICENSE for copying information.
 
+# AUTOMAKE_OPTIONS用于给automake传递自定义选项，可以影响构建过程、编译器选项、文件分发等
+# foreign 不遵循GNU规则
+# no-dependencies 不要生成依赖关系
 AUTOMAKE_OPTIONS = foreign no-dependencies
 
+# 在链接时，去除不被使用的代码段
 LDADD = $(LIBEVENT_GC_SECTIONS) ../libevent.la
+
+# 设置预处理器头文件路径
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/compat -I$(top_srcdir)/include -I../include
 
 noinst_PROGRAMS = event-test time-test signal-test dns-example hello-world http-server

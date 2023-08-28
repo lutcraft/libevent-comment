@@ -63,7 +63,8 @@ struct deferred_cb_queue {
 	void *notify_arg;
 
 	/** Deferred callback management: a list of deferred callbacks to
-	 * run active the active events. 延迟回调管理：运行活动事件的延迟回调列表*/
+	 * run active the active events. 延迟回调管理：运行活动事件的延迟回调列表，真正的列表存在这里
+	 */
 	TAILQ_HEAD (deferred_cb_list, deferred_cb) deferred_cb_list;
 };
 

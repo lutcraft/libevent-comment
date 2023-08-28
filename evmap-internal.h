@@ -59,6 +59,10 @@ void evmap_signal_clear(struct event_signal_map* ctx);
 
     Requires that ev is not already added.
 
+在给定文件描述符上，将IO事件（EV_READ或EV_WRITE的某种组合）添加到event_base的事件列表中，并在fd的状态发生更改时告知底层事件操作。
+
+要求该事件ev尚未添加过。
+
     @param base the event_base to operate on.
     @param fd the file descriptor corresponding to ev.
     @param ev the event to add.
@@ -84,7 +88,9 @@ void evmap_io_active(struct event_base *base, evutil_socket_t fd, short events);
 
 /* These functions behave in the same way as evmap_io_*, except they work on
  * signals rather than fds.  signals use a linear map everywhere; fds use
- * either a linear map or a hashtable. */
+ * either a linear map or a hashtable. 
+ * 这些函数的行为方式与evmap_io_*相同，只是它们处理信号而不是fds。信号处处使用线性映射；fds使用线性映射或哈希表。
+ * */
 int evmap_signal_add(struct event_base *base, int signum, struct event *ev);
 int evmap_signal_del(struct event_base *base, int signum, struct event *ev);
 void evmap_signal_active(struct event_base *base, evutil_socket_t signum, int ncalls);

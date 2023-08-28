@@ -38,7 +38,7 @@ fifo_read(evutil_socket_t fd, short event, void *arg)
 	DWORD dwBytesRead;
 #endif
 
-	/* Reschedule this event */
+	/* Reschedule this event 循环触发*/
 	event_add(ev, NULL);
 
 	fprintf(stderr, "fifo_read called with fd: %d, event: %d, arg: %p\n",
@@ -93,6 +93,16 @@ main(int argc, char **argv)
 	const char *fifo = "event.fifo";
 	int socket;
 
+	/**
+	 * 获取文件或者符号链接的元数据
+	 * lstat可以获取到文件类型，权限，大小，所有者等元数据信息
+	 * st_size	大小
+	 * st_mode	权限
+	 * 
+	 * 与stat不同，lstat不会对符号链接进行解引用，而是直接返回符号链接本身的信息
+	 * 
+	 * 注意lstat只能获取文件元数据，不能打开、读取或者写入文件内容，这是open read write的事
+	 */
 	if (lstat(fifo, &st) == 0) {
 		if ((st.st_mode & S_IFMT) == S_IFREG) {
 			errno = EEXIST;
@@ -100,20 +110,27 @@ main(int argc, char **argv)
 			exit(1);
 		}
 	}
-
+	/**
+	 * unlink用于删除文件，释放文件空间，无法恢复
+	*/
 	unlink(fifo);
+	/**
+	 * mkfifo用于创建命名管道，管道本质是文件，所以也有权限位
+	 * 命名管道默认是阻塞的，即：在管道空时读会阻塞，在管道满时写也会阻塞， 所以要特别防止死锁。
+	*/
 	if (mkfifo(fifo, 0600) == -1) {
 		perror("mkfifo");
 		exit(1);
 	}
 
-	/* Linux pipes are broken, we need O_RDWR instead of O_RDONLY */
+	/* Linux pipes are broken, we need O_RDWR读写模式 instead of O_RDONLY只读模式 */
 #ifdef __linux
 	socket = open(fifo, O_RDWR | O_NONBLOCK, 0);
 #else
 	socket = open(fifo, O_RDONLY | O_NONBLOCK, 0);
 #endif
 
+	//对文件句柄打开socket
 	if (socket == -1) {
 		perror("open");
 		exit(1);
@@ -121,19 +138,24 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "Write data to %s\n", fifo);
 #endif
-	/* Initalize the event library */
+	/* Initalize the event library
+		初始化reactor实例 */
 	event_init();
 
 	/* Initalize one event */
 #ifdef WIN32
 	event_set(&evfifo, (evutil_socket_t)socket, EV_READ, fifo_read, &evfifo);
 #else
+	//创建event事件处理器对象，监控socket事件，event内部存有reactor对象的引用，此接口的reactor对象是current-reactor
 	event_set(&evfifo, socket, EV_READ, fifo_read, &evfifo);
+	/// 	event对象句柄
 #endif
 
-	/* Add it to the active events, without a timeout */
+	/* Add it to the active events, without a timeout 
+	立即将本事件处理器添加到自身reactor对象的激活事件队列*/
 	event_add(&evfifo, NULL);
 
+	//事件分发，没有指定用哪个reactor，因为这个函数会使用current的reactor进行分发
 	event_dispatch();
 #ifdef WIN32
 	CloseHandle(socket);

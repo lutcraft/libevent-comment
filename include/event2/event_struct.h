@@ -124,6 +124,12 @@ struct event {
 	void *ev_arg;
 };
 
+/**
+ * struct event_list结构体的定义
+ * struct event_list { struct event *tqh_first; struct event **tqh_last; }
+ * 
+ * 球球你们别用宏定义结构体了=.=
+*/
 TAILQ_HEAD (event_list, event);
 
 #ifdef _EVENT_DEFINED_TQENTRY

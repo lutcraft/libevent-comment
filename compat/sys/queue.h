@@ -35,7 +35,8 @@
 #ifndef	_SYS_QUEUE_H_
 #define	_SYS_QUEUE_H_
 
-/*
+/**
+ * libevent自己定义了一系列跨平台的基础数据结构
  * This file defines five types of data structures: singly-linked lists,
  * lists, simple queues, tail queues, and circular queues.
  *

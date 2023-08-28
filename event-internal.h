@@ -70,13 +70,17 @@ extern "C" {
  * 
  */
 struct eventop {
-	/** The name of this backend. */
+	/** The name of this backend. 后端名*/
 	const char *name;
 	/** Function to set up an event_base to use this backend.  It should
 	 * create a new structure holding whatever information is needed to
 	 * run the backend, and return it.  The returned pointer will get
 	 * stored by event_init into the event_base.evbase field.  On failure,
-	 * this function should return NULL. */
+	 * this function should return NULL.
+	 * 
+	 * 后端初始化方法，它应该创建一个新的结构体实例，包含运行后端所需的任何信息，并返回它。
+	 * 返回的指针将通过event_init存储到event_base.evbase字段中。失败时，此函数应返回NULL。
+	 */
 	void *(*init)(struct event_base *);
 	/** Enable reading/writing on a given fd or signal.  'events' will be
 	 * the events that we're trying to enable: one or more of EV_READ,
@@ -135,7 +139,9 @@ HT_HEAD(event_io_map, event_map_entry);
 */
 struct event_signal_map {
 	/* An array of evmap_io * or of evmap_signal *; empty entries are
-	 * set to NULL. */
+	 * set to NULL.
+	 evmap_io*或evmap_signal*的数组；空条目设置为NULL。
+	 */
 	void **entries;
 	/* The number of entries available in entries */
 	int nentries;
@@ -183,8 +189,13 @@ extern int _event_debug_mode_on;
 
 struct event_base {
 	/** Function pointers and other data to describe this event_base's
-	 * backend. */
+	 * backend.
+	 * 指向一种后端的实现
+	 * 函数指针和其他用于描述此后端的数据。
+	 * 
+	 */
 	const struct eventop *evsel;
+
 	/** Pointer to backend-specific data.
 	 * 指向每一个初始化好的后端实例
 	 */
@@ -193,7 +204,7 @@ struct event_base {
 	/** List of changes to tell backend about at next dispatch.  Only used
 	 * by the O(1) backends.
 	 * 
-	 * 在下一次事件时，告知后端的change列表。只能用O（1）复杂的后端否则影响性能。
+	 * 在下一次事件分发时，告知后端的change列表。只能用O（1）复杂的后端否则影响性能。
 	 */
 	struct event_changelist changelist;
 
@@ -229,7 +240,8 @@ struct event_base {
 	/** An array of nactivequeues queues for active events (ones that
 	 * have triggered, and whose callbacks need to be called).  Low
 	 * priority numbers are more important, and stall higher ones.
-	 * 活动事件的队列（已触发且需要调用其回调的事件）。优先级越低，事件越重要，可能会拖慢更高优先级的事件
+	 * 活动事件的队列（已触发且需要调用其回调的事件）。根据优先级不同，同一个后端对象拥有多个活动事件队列
+	 * 优先级越低，事件越重要，可能会拖慢更高优先级的事件
 	 */
 	struct event_list *activequeues;
 	/** The length of the activequeues array 活动事件的队列长度*/
@@ -246,16 +258,22 @@ struct event_base {
 	int n_common_timeouts_allocated;
 
 	/** List of defered_cb that are active.  We run these after the active
-	 * events. */
+	 * events. 
+	 * 活动延迟回调 list，在运行活动时间回调后之后运行，类似后处理
+	 * */
 	struct deferred_cb_queue defer_queue;
 
-	/** Mapping from file descriptors to enabled (added) events */
+	/** Mapping from file descriptors to enabled (added) events 
+	 * 从文件描述符到已启用（添加）事件的映射
+	*/
 	struct event_io_map io;
 
 	/** Mapping from signal numbers to enabled (added) events. */
 	struct event_signal_map sigmap;
 
-	/** All events that have been enabled (added) in this event_base */
+	/** All events that have been enabled (added) in this event_base
+	 * 激活事件队列，所有被add的事件，将会被加到这里
+	 */
 	struct event_list eventqueue;
 
 	/** 存储时间值；用于检测时间何时倒退。 */

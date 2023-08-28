@@ -46,9 +46,10 @@ void event_sock_warn(evutil_socket_t sock, const char *fmt, ...) EV_CHECK_FMT(2,
 void event_errx(int eval, const char *fmt, ...) EV_CHECK_FMT(2,3) EV_NORETURN;
 void event_warnx(const char *fmt, ...) EV_CHECK_FMT(1,2);
 void event_msgx(const char *fmt, ...) EV_CHECK_FMT(1,2);
-void _event_debugx(const char *fmt, ...) EV_CHECK_FMT(1,2);
+void _event_debugx(const char *fmt, ...) EV_CHECK_FMT(1,2); //用EV_CHECK_FMT宏，对变长参数进行了限制
 
 #ifdef USE_DEBUG
+//想要打印调试信息需要重新编译，采用USE_DEBUG宏
 #define event_debug(x) _event_debugx x
 #else
 #define event_debug(x) do {;} while (0)

@@ -92,7 +92,7 @@ extern const struct eventop win32ops;
 #endif
 
 /* Array of backends in order of preference. 
-	按偏好顺序排列的后端阵列
+	按优先级顺序排列的后端序列，第一个可行的后端将会实例化
 */
 static const struct eventop *eventops[] = {
 #ifdef _EVENT_HAVE_EVENT_PORTS
@@ -121,6 +121,7 @@ static const struct eventop *eventops[] = {
 
 /* Global state; deprecated */
 struct event_base *event_global_current_base_ = NULL;
+//当前使用的后端
 #define current_base event_global_current_base_
 
 /* Global state */
@@ -328,7 +329,9 @@ HT_GENERATE(event_debug_map, event_debug_entry, node, hash_debug_entry,
 	EVLOCK_ASSERT_LOCKED((base)->th_base_lock)
 
 /* The first time this function is called, it sets use_monotonic to 1
- * if we have a clock function that supports monotonic time */
+ * if we have a clock function that supports monotonic time
+	检查monotonic时间接口是否可用，use_monotonic=1为可用
+  */
 static void
 detect_monotonic(void)
 {
@@ -571,21 +574,27 @@ event_base_new_with_config(const struct event_config *cfg)
 
 	//初始化最小堆
 	min_heap_ctor(&base->timeheap);
+	//初始化激活事件队列 是一个event_list结构
 	TAILQ_INIT(&base->eventqueue);
+	//初始化管道
 	base->sig.ev_signal_pair[0] = -1;
 	base->sig.ev_signal_pair[1] = -1;
+	//初始化管道
 	base->th_notify_fd[0] = -1;
 	base->th_notify_fd[1] = -1;
 
 	//初始化延迟回调函数队列
 	event_deferred_cb_queue_init(&base->defer_queue);
 	base->defer_queue.notify_fn = notify_base_cbq_callback;
-	base->defer_queue.notify_arg = base;		//要唤醒的反应堆对象
+	base->defer_queue.notify_arg = base;		//要唤醒的反应堆对象，做上面回调函数的参数的
 	if (cfg)
 		base->flags = cfg->flags;
 
+	//初始化IO事件和文件描述符之间的映射
 	evmap_io_initmap(&base->io);
+	//初始化信号事件和文件描述符之间的映射
 	evmap_signal_initmap(&base->sigmap);
+	//初始化changeList
 	event_changelist_init(&base->changelist);
 
 	base->evbase = NULL;
@@ -593,7 +602,7 @@ event_base_new_with_config(const struct event_config *cfg)
 	should_check_environment =
 	    !(cfg && (cfg->flags & EVENT_BASE_FLAG_IGNORE_ENV));
 
-	for (i = 0; eventops[i] && !base->evbase; i++) {
+	for (i = 0; eventops[i] && !base->evbase/*上一次初始化失败才会进行下一次初始化*/; i++) {
 		if (cfg != NULL) {
 			/* determine if this backend should be avoided
 				配置屏蔽的后端不处理
@@ -613,13 +622,13 @@ event_base_new_with_config(const struct event_config *cfg)
 		    event_is_method_disabled(eventops[i]->name))
 			continue;
 
-		//对每个后端对象进行初始化
+		//尝试对后端对象进行初始化
 		base->evsel = eventops[i];
 
 		base->evbase = base->evsel->init(base);
 	}
 
-	//后端初始化失败了
+	//所有后端对象初始化都失败了
 	if (base->evbase == NULL) {
 		event_warnx("%s: no event mechanism available",
 		    __func__);
@@ -632,7 +641,7 @@ event_base_new_with_config(const struct event_config *cfg)
 		event_msgx("libevent using: %s", base->evsel->name);
 
 	/* allocate a single active event queue
-	分配一个活动事件队列 */
+	分配一个活动事件队列，只有一个优先级级别 */
 	if (event_base_priority_init(base, 1) < 0) {
 		event_base_free(base);
 		return NULL;
@@ -670,6 +679,7 @@ event_base_new_with_config(const struct event_config *cfg)
 		event_base_start_iocp(base, cfg->n_cpus_hint);
 #endif
 
+	//返回后端对象
 	return (base);
 }
 
@@ -1995,6 +2005,7 @@ event_add(struct event *ev, const struct timeval *tv)
 {
 	int res;
 
+	// !ev->ev_base 很可能为假，ev->ev_base很可能为真，大部分情况下ev->ev_base是存在的
 	if (EVUTIL_FAILURE_CHECK(!ev->ev_base)) {
 		event_warnx("%s: event has no event_base set.", __func__);
 		return -1;
@@ -2061,7 +2072,11 @@ evthread_notify_base(struct event_base *base)
 /* Implementation function to add an event.  Works just like event_add,
  * except: 1) it requires that we have the lock.  2) if tv_is_absolute is set,
  * we treat tv as an absolute time, not as an interval to add to the current
- * time */
+ * time
+ * 
+ * 不带锁的event_add
+ * tv_is_absolute是否为绝对时间
+ */
 static inline int
 event_add_internal(struct event *ev, const struct timeval *tv,
     int tv_is_absolute)
@@ -2070,9 +2085,20 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 	int res = 0;
 	int notify = 0;
 
+	//断言锁已经获得
 	EVENT_BASE_ASSERT_LOCKED(base);
+	//断言event是可插入的（add）
 	_event_debug_assert_is_setup(ev);
-
+/**
+_event_debugx ( 
+	"event_add: event: %p (fd ""%d""), %s%s%scall %p",
+	ev,
+	(ev->ev_fd),
+	ev->ev_events & EV_READ ? "EV_READ " : " ",
+	ev->ev_events & EV_WRITE ? "EV_WRITE " : " ",
+	tv ? "EV_TIMEOUT " : " ",
+	ev->ev_callback)
+*/
 	event_debug((
 		 "event_add: event: %p (fd "EV_SOCK_FMT"), %s%s%scall %p",
 		 ev,
@@ -2081,12 +2107,16 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 		 ev->ev_events & EV_WRITE ? "EV_WRITE " : " ",
 		 tv ? "EV_TIMEOUT " : " ",
 		 ev->ev_callback));
-
+	//检查flag位的合法性
 	EVUTIL_ASSERT(!(ev->ev_flags & ~EVLIST_ALL));
 
 	/*
 	 * prepare for timeout insertion further below, if we get a
 	 * failure on any step, we should not change any state.
+	 * 
+	 * 如果是延迟插入：
+	 * 为下面的超时插入做进一步的准备，如果我们在任何步骤上都失败了，我们不应该更改任何状态。
+	 * 
 	 */
 	if (tv != NULL && !(ev->ev_flags & EVLIST_TIMEOUT)) {
 		if (min_heap_reserve(&base->timeheap,
@@ -2097,7 +2127,12 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 	/* If the main thread is currently executing a signal event's
 	 * callback, and we are not the main thread, then we want to wait
 	 * until the callback is done before we mess with the event, or else
-	 * we can race on ev_ncalls and ev_pncalls below. */
+	 * we can race on ev_ncalls and ev_pncalls below.
+	 * 
+	 * 如果主线程当前正在执行信号事件的回调，而我们不是主线程，
+	 * 那么我们希望等到回调完成后再处理事件，否则我们可以在下面的 ev_ncalls 和 ev_pncalls 上进行竞争。
+	 * 
+	 */
 #ifndef _EVENT_DISABLE_THREAD_SUPPORT
 	if (base->current_event == ev && (ev->ev_events & EV_SIGNAL)
 	    && !EVBASE_IN_THREAD(base)) {
@@ -2108,14 +2143,17 @@ event_add_internal(struct event *ev, const struct timeval *tv,
 
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE))) {
+		//如果是hd事件
 		if (ev->ev_events & (EV_READ|EV_WRITE))
 			res = evmap_io_add(base, ev->ev_fd, ev);
+		//如果是信号事件
 		else if (ev->ev_events & EV_SIGNAL)
 			res = evmap_signal_add(base, (int)ev->ev_fd, ev);
+
 		if (res != -1)
 			event_queue_insert(base, ev, EVLIST_INSERTED);
 		if (res == 1) {
-			/* evmap says we need to notify the main thread. */
+			/* 后端发生变化，evmap says we need to notify the main thread. */
 			notify = 1;
 			res = 0;
 		}

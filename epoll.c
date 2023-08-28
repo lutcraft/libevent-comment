@@ -81,6 +81,10 @@ static int epoll_nochangelist_add(struct event_base *base, evutil_socket_t fd,
 static int epoll_nochangelist_del(struct event_base *base, evutil_socket_t fd,
     short old, short events, void *p);
 
+/**
+ * epoll后端的真正实现
+ * 
+*/
 const struct eventop epollops = {
 	"epoll",
 	epoll_init,

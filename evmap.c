@@ -53,11 +53,12 @@
 
 /** An entry for an evmap_io list: notes all the events that want to read or
 	write on a given fd, and the number of each.
+	evmap_io列表的一个条目：记录要在给定fd上读取或写入的所有事件，以及每个事件的数量。
   */
 struct evmap_io {
-	struct event_list events;
-	ev_uint16_t nread;
-	ev_uint16_t nwrite;
+	struct event_list events;	//某个fd上的事件列表
+	ev_uint16_t nread;	//读事件数量
+	ev_uint16_t nwrite;	//写事件数量
 };
 
 
@@ -265,8 +266,15 @@ evmap_io_init(struct evmap_io *entry)
 }
 
 
-/* return -1 on error, 0 on success if nothing changed in the event backend,
- * and 1 on success if something did. */
+/** return -1 on error, 0 on success if nothing changed in the event backend,
+ * and 1 on success if something did. 
+ * 
+ * 添加对fd上，ev事件的监听
+ * 
+ * 出现错误时返回-1，
+ * 如果本次添加事件，后端没有任何更改，则返回0，
+ * 如果发生更改则返回1。
+ */
 int
 evmap_io_add(struct event_base *base, evutil_socket_t fd, struct event *ev)
 {
@@ -288,43 +296,59 @@ evmap_io_add(struct event_base *base, evutil_socket_t fd, struct event *ev)
 			return (-1);
 	}
 #endif
-	GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init,
-						 evsel->fdinfo_len);
+
+	// GET_IO_SLOT_AND_CTOR(ctx, io, fd, evmap_io, evmap_io_init, evsel->fdinfo_len);
+	if (io->entries[fd] == NULL) 
+	{ 
+		io->entries[fd] = event_mm_calloc_(1, (sizeof(struct evmap_io) + evsel->fdinfo_len));
+		if (__builtin_expect(!!((io)->entries[fd] == NULL),0)) 
+			return (-1);
+		evmap_io_init((struct evmap_io *)io->entries[fd]); 
+	} 
+	//这次添加的条目就要放到这里
+	ctx = (struct evmap_io *)(io->entries[fd]);
 
 	nread = ctx->nread;
 	nwrite = ctx->nwrite;
 
+	//继承原来的读写状态位
 	if (nread)
 		old |= EV_READ;
 	if (nwrite)
 		old |= EV_WRITE;
 
+	//如果之前没有这样一个读事件，数目++
 	if (ev->ev_events & EV_READ) {
 		if (++nread == 1)
 			res |= EV_READ;
 	}
+	//如果之前没有这样一个写事件，数目++
 	if (ev->ev_events & EV_WRITE) {
 		if (++nwrite == 1)
 			res |= EV_WRITE;
 	}
+
+	//超过最大容量
 	if (EVUTIL_UNLIKELY(nread > 0xffff || nwrite > 0xffff)) {
 		event_warnx("Too many events reading or writing on fd %d",
 		    (int)fd);
 		return -1;
 	}
+
 	if (EVENT_DEBUG_MODE_IS_ON() &&
 	    (old_ev = TAILQ_FIRST(&ctx->events)) &&
 	    (old_ev->ev_events&EV_ET) != (ev->ev_events&EV_ET)) {
-		event_warnx("Tried to mix edge-triggered and non-edge-triggered"
+		event_warnx("Tried to mix edge-triggered and non-edge-triggered"	//ET模式和LT模式不能混用
 		    " events on fd %d", (int)fd);
 		return -1;
 	}
 
-	if (res) {
+	if (res) {//如果本次添加有变化
 		void *extra = ((char*)ctx) + sizeof(struct evmap_io);
 		/* XXX(niels): we cannot mix edge-triggered and
 		 * level-triggered, we should probably assert on
 		 * this. */
+		//利用后端接口将事件处理器对应的事件 添加到多路分发器中
 		if (evsel->add(base, ev->ev_fd,
 			old, (ev->ev_events & EV_ET) | res, extra) == -1)
 			return (-1);
@@ -333,7 +357,13 @@ evmap_io_add(struct event_base *base, evutil_socket_t fd, struct event *ev)
 
 	ctx->nread = (ev_uint16_t) nread;
 	ctx->nwrite = (ev_uint16_t) nwrite;
-	TAILQ_INSERT_TAIL(&ctx->events, ev, ev_io_next);
+
+//	TAILQ_INSERT_TAIL(&ctx->events, ev, ev_io_next); 将事件添加到IO事件队列中
+	ev->_ev.ev_io.ev_io_next.tqe_next = NULL;
+ 	ev->_ev.ev_io.ev_io_next.tqe_prev = (&ctx->events)->tqh_last;
+  	*(&ctx->events)->tqh_last = ev;
+ 	(&ctx->events)->tqh_last = &ev->_ev.ev_io.ev_io_next.tqe_next;
+
 
 	return (retval);
 }
