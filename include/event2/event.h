@@ -635,7 +635,9 @@ int event_base_set(struct event_base *, struct event *);
  * have had their callbacks run. */
 #define EVLOOP_ONCE	0x01
 /** Do not block: see which events are ready now, run the callbacks
- * of the highest-priority ones, then exit. */
+ * of the highest-priority ones, then exit.
+ * 不要阻塞：查看哪些事件现在已经就绪，运行优先级最高的事件的回调，然后退出。
+ *  */
 #define EVLOOP_NONBLOCK	0x02
 /**@}*/
 
@@ -727,22 +729,43 @@ int event_base_got_break(struct event_base *);
  */
 /**@{*/
 /** Indicates that a timeout has occurred.  It's not necessary to pass
- * this flag to event_for new()/event_assign() to get a timeout. */
+ * this flag to event_for new()/event_assign() to get a timeout. 
+ * 
+ * 这个标志在时间超时后被打上。
+ * 构造事件的时候,EV_TIMEOUT 标志是 被忽略的:
+ * 可以在添加事件的时候设置超时 ,也可以不设置。超时发生时,回调函数的 what 参数将带有这个标志。
+ * */
 #define EV_TIMEOUT	0x01
-/** Wait for a socket or FD to become readable */
+/** Wait for a socket or FD to become readable 
+ * 表示指定的文件描述符已经就绪,可以读取的时候,事件将成为激活的。
+*/
 #define EV_READ		0x02
-/** Wait for a socket or FD to become writeable */
+/** Wait for a socket or FD to become writeable
+ * 表示指定的文件描述符已经就绪,可以写入的时候,事件将成为激活的。
+ */
 #define EV_WRITE	0x04
-/** Wait for a POSIX signal to be raised*/
+/** Wait for a POSIX signal to be raised
+ * 信号检测
+*/
 #define EV_SIGNAL	0x08
 /**
+ * 持久的
  * Persistent event: won't get removed automatically when activated.
  *
  * When a persistent event with a timeout becomes activated, its timeout
  * is reset to 0.
+ * 
+ * 
+  默认情况下,每当未决事件成为激活的(因为 fd 已经准备好读取或者写入,或者因为超时), 事件将在其回调被执行前成为非未决的。如果想让事件再次成为未决的 ,可以在回调函数中 再次对其调用 event_add()。
+  然而,如果设置了 EV_PERSIST 标志,事件就是持久的。这意味着即使其回调被激活 ,事件还是会保持为未决状态 。如果想在回调中让事件成为非未决的 ,可以对其调用 event_del ()。
+  每次执行事件回调的时候,持久事件的超时值会被复位。因此,如果具有 EV_READ|EV_PERSIST 标志,以及5秒的超时值,则事件将在以下情况下成为激活的:
+    套接字已经准备好被读取的时候
+    从最后一次成为激活的开始,时间已经经过 5秒
  */
 #define EV_PERSIST	0x10
-/** Select edge-triggered behavior, if supported by the backend. */
+/** Select edge-triggered behavior, if supported by the backend. 
+ * 表示如果底层的 event_base 后端支持边沿触发事件,则事件应该是边沿触发的。这个标志 影响 EV_READ 和 EV_WRITE 的语义
+*/
 #define EV_ET       0x20
 /**@}*/
 
@@ -964,6 +987,10 @@ int event_del(struct event *);
   One common use in multithreaded programs is to wake the thread running
   event_base_loop() from another thread.
 
+
+  极少数情况下,需要在事件的条件没有触发的时候让事件成为激活的。
+  这个函数让事件 ev 带有标志 what(EV_READ、EV_WRITE 和 EV_TIMEOUT 的组合)成 为激活的。事件不需要已经处于未决状态,激活事件也不会让它成为未决的
+
   @param ev an event to make active.
   @param res a set of flags to pass to the event's callback.
   @param ncalls an obsolete argument: this is ignored.
@@ -972,6 +999,7 @@ void event_active(struct event *ev, int res, short ncalls);
 
 /**
   Checks if a specific event is pending or scheduled.
+  检查时间是否已经添加add
 
   @param ev an event struct previously passed to event_add()
   @param events the requested event type; any of EV_TIMEOUT|EV_READ|

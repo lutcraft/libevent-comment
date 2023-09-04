@@ -62,7 +62,10 @@ struct epollop {
 static void *epoll_init(struct event_base *);
 static int epoll_dispatch(struct event_base *, struct timeval *);
 static void epoll_dealloc(struct event_base *);
-
+/**
+ * epoll后端的真正实现（使用changelist）
+ * 
+*/
 static const struct eventop epollops_changelist = {
 	"epoll (with changelist)",
 	epoll_init,
@@ -82,19 +85,19 @@ static int epoll_nochangelist_del(struct event_base *base, evutil_socket_t fd,
     short old, short events, void *p);
 
 /**
- * epoll后端的真正实现
+ * epoll后端的真正实现（不使用changelist）
  * 
 */
 const struct eventop epollops = {
-	"epoll",
-	epoll_init,
-	epoll_nochangelist_add,
-	epoll_nochangelist_del,
-	epoll_dispatch,
-	epoll_dealloc,
-	1, /* need reinit */
-	EV_FEATURE_ET|EV_FEATURE_O1,
-	0
+	"epoll",						//name
+	epoll_init,						//init 初始化方法
+	epoll_nochangelist_add,			//add
+	epoll_nochangelist_del,			//del
+	epoll_dispatch,					//dispatch
+	epoll_dealloc,					//dealloc
+	1, /* need reinit */			//need_reinit
+	EV_FEATURE_ET|EV_FEATURE_O1,	//features
+	0								//fdinfo_len
 };
 
 #define INITIAL_NEVENT 32
@@ -105,12 +108,15 @@ const struct eventop epollops = {
  * as big as 1000, and LONG_MAX can be as small as (1<<31)-1, so the
  * largest number of msec we can support here is 2147482.  Let's
  * round that down by 47 seconds.
+ * 
+ * linux epoll最大接收的超时时长
  */
 #define MAX_EPOLL_TIMEOUT_MSEC (35*60*1000)
 
 static void *
 epoll_init(struct event_base *base)
 {
+	//epoll的句柄
 	int epfd;
 	struct epollop *epollop;
 
@@ -121,7 +127,7 @@ epoll_init(struct event_base *base)
 			event_warn("epoll_create");
 		return (NULL);
 	}
-
+	//子进程不能获取父进程的epoll句柄，需要自己重新实例化一个
 	evutil_make_socket_closeonexec(epfd);
 
 	if (!(epollop = mm_calloc(1, sizeof(struct epollop)))) {
@@ -140,11 +146,13 @@ epoll_init(struct event_base *base)
 	}
 	epollop->nevents = INITIAL_NEVENT;
 
+	//配置要求使用changelist模式的epoll函数集，写在这个地方也是屈服于统一框架的无奈之举
 	if ((base->flags & EVENT_BASE_FLAG_EPOLL_USE_CHANGELIST) != 0 ||
 	    ((base->flags & EVENT_BASE_FLAG_IGNORE_ENV) == 0 &&
 		evutil_getenv("EVENT_EPOLL_USE_CHANGELIST") != NULL))
 		base->evsel = &epollops_changelist;
 
+	//wake up,使用信号管道做
 	evsig_init(base);
 
 	return (epollop);
@@ -403,6 +411,7 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 		}
 	}
 
+	//应用epoll监控的fdhd变更
 	epoll_apply_changes(base);
 	event_changelist_remove_all(&base->changelist, base);
 
@@ -440,12 +449,15 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 		if (!ev)
 			continue;
 
+		//调用event的回调
 		evmap_io_active(base, events[i].data.fd, ev | EV_ET);
 	}
 
 	if (res == epollop->nevents && epollop->nevents < MAX_NEVENT) {
 		/* We used all of the event space this time.  We should
-		   be ready for more events next time. */
+		   be ready for more events next time.
+		   这次我们使用了所有的event空间。我们应该为下次更多的event做好准备。
+		    */
 		int new_nevents = epollop->nevents * 2;
 		struct epoll_event *new_events;
 

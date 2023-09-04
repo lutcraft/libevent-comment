@@ -331,6 +331,8 @@ HT_GENERATE(event_debug_map, event_debug_entry, node, hash_debug_entry,
 /* The first time this function is called, it sets use_monotonic to 1
  * if we have a clock function that supports monotonic time
 	检查monotonic时间接口是否可用，use_monotonic=1为可用
+
+	如果定义了 CLOCK_MONOTONIC 方法，则代表操作系统提供了一种不受系统时间调整影响的，获取单调时间的方法（本机）
   */
 static void
 detect_monotonic(void)
@@ -433,6 +435,9 @@ update_time_cache(struct event_base *base)
 	    gettime(base, &base->tv_cache);
 }
 
+/**
+ * 初始化默认后端
+*/
 struct event_base *
 event_init(void)
 {
@@ -442,7 +447,7 @@ event_init(void)
 		event_errx(1, "%s: Unable to construct event_base", __func__);
 		return NULL;
 	}
-
+	//默认后端
 	current_base = base;
 
 	return (base);
@@ -624,7 +629,7 @@ event_base_new_with_config(const struct event_config *cfg)
 
 		//尝试对后端对象进行初始化
 		base->evsel = eventops[i];
-
+		//sel接口，调用真正的epoll初始化
 		base->evbase = base->evsel->init(base);
 	}
 
@@ -1118,18 +1123,31 @@ event_signal_closure(struct event_base *base, struct event *ev)
  * is 32 bits long, but only uses 20 of those bits (since it can never be over
  * 999999.)  We use the top bits to encode 4 bites of magic number, and 8 bits
  * of index into the event_base's aray of common timeouts.
+ * 
+ * 
+ * 普通超时在通用队列中处理，特殊超时在最小堆中处理。当大部分超时时间都一样时，队列比堆更有性能优势。
+ * 
+ * 由于我们认为所有的超时处理代码的 timevals 都可以被复制或者赋值，
+ * 所以我们不能使用“魔术指针”来编码这些常见的超时。
+ * 在列表中搜索是否每次超时都是常见的，这也可能会导致效率低下。
+ * 相反，我们利用了这样一个事实，即tv_usec是32位长，但只使用了其中的20位（因为它永远不会超过999999。）
+ * 我们使用最高位将4位幻数和8位索引编码到event_base的一系列常见超时中。
+ * 
  */
 
 #define MICROSECONDS_MASK       COMMON_TIMEOUT_MICROSECONDS_MASK
-#define COMMON_TIMEOUT_IDX_MASK 0x0ff00000
+#define COMMON_TIMEOUT_IDX_MASK 0x0ff00000				//取这8bit当 common_timeout_queues 的下标用
 #define COMMON_TIMEOUT_IDX_SHIFT 20
-#define COMMON_TIMEOUT_MASK     0xf0000000
+#define COMMON_TIMEOUT_MASK     0xf0000000				//取这4bit当魔数用
 #define COMMON_TIMEOUT_MAGIC    0x50000000
 
 #define COMMON_TIMEOUT_IDX(tv) \
 	(((tv)->tv_usec & COMMON_TIMEOUT_IDX_MASK)>>COMMON_TIMEOUT_IDX_SHIFT)
 
-/** Return true iff if 'tv' is a common timeout in 'base' */
+/** Return true iff if 'tv' is a common timeout in 'base'
+ * 
+ * 如果“tv”是“base”中的常见超时，则返回true
+ */
 static inline int
 is_common_timeout(const struct timeval *tv,
     const struct event_base *base)
@@ -1138,7 +1156,7 @@ is_common_timeout(const struct timeval *tv,
 	if ((tv->tv_usec & COMMON_TIMEOUT_MASK) != COMMON_TIMEOUT_MAGIC)
 		return 0;
 	idx = COMMON_TIMEOUT_IDX(tv);
-	return idx < base->n_common_timeouts;
+	return idx < base->n_common_timeouts;	//下标小于通用超时队列，被通用超时队列管理
 }
 
 /* True iff tv1 and tv2 have the same common-timeout index, or if neither
@@ -1485,8 +1503,9 @@ event_process_active(struct event_base *base)
 
 /*
  * Wait continuously for events.  We exit only if no events are left.
- */
 
+ 持续等待事件。只有在没有剩余事件的情况下，才会退出。flag要是0，则永远不会退出
+ */
 int
 event_dispatch(void)
 {
@@ -1591,7 +1610,9 @@ event_base_loop(struct event_base *base, int flags)
 	int res, done, retval = 0;
 
 	/* Grab the lock.  We will release it inside evsel.dispatch, and again
-	 * as we invoke user callbacks. */
+	 * as we invoke user callbacks. 
+	 	取锁。我们将在evsel.dispatch中释放它，并在调用用户回调时再次释放。
+	 */
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
 
 	if (base->running_loop) {
@@ -1605,6 +1626,7 @@ event_base_loop(struct event_base *base, int flags)
 
 	clear_time_cache(base);
 
+	//本次分发需要监听信号事件，就初始化信号处理需要的一些数据（sig全局变量）
 	if (base->sig.ev_signal_added && base->sig.ev_n_signals_added)
 		evsig_set_base(base);
 
@@ -1614,12 +1636,15 @@ event_base_loop(struct event_base *base, int flags)
 	base->th_owner_id = EVTHREAD_GET_ID();
 #endif
 
+	//设置在处理完事件后是否应该终止循环
 	base->event_gotterm = base->event_break = 0;
 
 	while (!done) {
 		base->event_continue = 0;
 
-		/* Terminate the loop if we have been asked to */
+		/* Terminate the loop if we have been asked to
+			事件循环被要求终止 got terminate
+		 */
 		if (base->event_gotterm) {
 			break;
 		}
@@ -1628,31 +1653,40 @@ event_base_loop(struct event_base *base, int flags)
 			break;
 		}
 
+		//获取当前时间
 		timeout_correct(base, &tv);
-
 		tv_p = &tv;
+		// 如果没有（活动事件和延迟活动事件）而且 没有采用NOBLOCK的运行方式
 		if (!N_ACTIVE_CALLBACKS(base) && !(flags & EVLOOP_NONBLOCK)) {
+			//加入定时序列中等待
 			timeout_next(base, &tv_p);
 		} else {
 			/*
 			 * if we have active events, we just poll new events
 			 * without waiting.
+			 * 
+			 * 如果我们有活动的事件，则立刻循环处理。
 			 */
 			evutil_timerclear(&tv);
 		}
 
-		/* If we have no events, we just exit */
+		/* If we have no events, we just exit 
+			没有监听任何事件
+		*/
 		if (!event_haveevents(base) && !N_ACTIVE_CALLBACKS(base)) {
 			event_debug(("%s: no events registered.", __func__));
 			retval = 1;
+			//跳出循环
 			goto done;
 		}
 
-		/* update last old time */
+		/* update last old time
+			采用缓存时间更新事件时间event_tv
+		 */
 		gettime(base, &base->event_tv);
-
+		//清除缓存时间
 		clear_time_cache(base);
-
+		//epoll接口分发，内部是一个epoll_wait，并且调用活动事件的回调
 		res = evsel->dispatch(base, tv_p);
 
 		if (res == -1) {
@@ -1679,7 +1713,7 @@ event_base_loop(struct event_base *base, int flags)
 
 done:
 	clear_time_cache(base);
-	base->running_loop = 0;
+	base->running_loop = 0;	//时间循环flag打开
 
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
 
@@ -1782,6 +1816,7 @@ event_assign(struct event *ev, struct event_base *base, evutil_socket_t fd, shor
 	ev->ev_ncalls = 0;
 	ev->ev_pncalls = NULL;
 
+	//信号ev不允许给予可读或者可写
 	if (events & EV_SIGNAL) {
 		if ((events & (EV_READ|EV_WRITE)) != 0) {
 			event_warnx("%s: EV_SIGNAL is not compatible with "
@@ -1825,6 +1860,11 @@ event_base_set(struct event_base *base, struct event *ev)
 	return (0);
 }
 
+/**
+ * 创建event事件处理器对象，对这个ev进行初始化
+ * @param events 事件标志
+ * 
+*/
 void
 event_set(struct event *ev, evutil_socket_t fd, short events,
 	  void (*callback)(evutil_socket_t, short, void *), void *arg)
@@ -1833,7 +1873,10 @@ event_set(struct event *ev, evutil_socket_t fd, short events,
 	r = event_assign(ev, current_base, fd, events, callback, arg);
 	EVUTIL_ASSERT(r == 0);
 }
-
+/**
+ * 创建event事件处理器对象，自选后端
+ * 
+*/
 struct event *
 event_new(struct event_base *base, evutil_socket_t fd, short events, void (*cb)(evutil_socket_t, short, void *), void *arg)
 {
@@ -2056,13 +2099,18 @@ evthread_notify_base_eventfd(struct event_base *base)
 
 /** Tell the thread currently running the event_loop for base (if any) that it
  * needs to stop waiting in its dispatch function (if it is) and process all
- * active events and deferred callbacks (if there are any).  */
+ * active events and deferred callbacks (if there are any).
+ * 
+ * 通知运行event-loop的主线程，主线程在收到通知时，需要停止在dispatch中等待，并立刻处理所有活动事件和延迟回调
+ */
 static int
 evthread_notify_base(struct event_base *base)
 {
 	EVENT_BASE_ASSERT_LOCKED(base);
+	//没通知函数
 	if (!base->th_notify_fn)
 		return -1;
+	//已经有通知被挂起了，不要再重复通知
 	if (base->is_notify_pending)
 		return 0;
 	base->is_notify_pending = 1;
@@ -2081,9 +2129,9 @@ static inline int
 event_add_internal(struct event *ev, const struct timeval *tv,
     int tv_is_absolute)
 {
-	struct event_base *base = ev->ev_base;
+	struct event_base *base = ev->ev_base;	//这个在 event_set 中，已经指派
 	int res = 0;
-	int notify = 0;
+	int notify = 0;				//在其他线程调用此函数，需要通知主线程中的event-loop
 
 	//断言锁已经获得
 	EVENT_BASE_ASSERT_LOCKED(base);
@@ -2114,8 +2162,8 @@ _event_debugx (
 	 * prepare for timeout insertion further below, if we get a
 	 * failure on any step, we should not change any state.
 	 * 
-	 * 如果是延迟插入：
-	 * 为下面的超时插入做进一步的准备，如果我们在任何步骤上都失败了，我们不应该更改任何状态。
+	 * 如果插入的是延迟事件，且它尚未被添加到通用定时器和时间堆中，则为其在时间堆上预留一个位置
+	 * 如果我们在任何步骤上都失败了，我们不应该更改任何状态，而直接返回退出
 	 * 
 	 */
 	if (tv != NULL && !(ev->ev_flags & EVLIST_TIMEOUT)) {
@@ -2133,14 +2181,16 @@ _event_debugx (
 	 * 那么我们希望等到回调完成后再处理事件，否则我们可以在下面的 ev_ncalls 和 ev_pncalls 上进行竞争。
 	 * 
 	 */
-#ifndef _EVENT_DISABLE_THREAD_SUPPORT
+#ifndef _EVENT_DISABLE_THREAD_SUPPORT		//如果支持多线程
 	if (base->current_event == ev && (ev->ev_events & EV_SIGNAL)
 	    && !EVBASE_IN_THREAD(base)) {
+		//加入cond队列
 		++base->current_event_waiters;
 		EVTHREAD_COND_WAIT(base->current_event_cond, base->th_base_lock);
 	}
 #endif
 
+	//添加事件映射关系
 	if ((ev->ev_events & (EV_READ|EV_WRITE|EV_SIGNAL)) &&
 	    !(ev->ev_flags & (EVLIST_INSERTED|EVLIST_ACTIVE))) {
 		//如果是hd事件
@@ -2151,9 +2201,11 @@ _event_debugx (
 			res = evmap_signal_add(base, (int)ev->ev_fd, ev);
 
 		if (res != -1)
+			//事件处理器加入注册时间队列
 			event_queue_insert(base, ev, EVLIST_INSERTED);
 		if (res == 1) {
-			/* 后端发生变化，evmap says we need to notify the main thread. */
+			/* 事件多路分发器添加了新事件，需要通知主线程
+				evmap says we need to notify the main thread. */
 			notify = 1;
 			res = 0;
 		}
@@ -2162,6 +2214,12 @@ _event_debugx (
 	/*
 	 * we should change the timeout state only if the previous event
 	 * addition succeeded.
+	 * 
+	 * 只有在上一次事件添加成功的情况下，我们才应该更改超时状态。*意义不明*
+	 * 
+	 * 下面即将将event处理器添加到通用定时器队列或时间堆中。
+	 * 		对于信号事件处理器和IO事件处理器，根据evmap_*_add的结果决定是否添加（为了支持事件添加超时）
+	 * 		对于定时器，则时钟要添加
 	 */
 	if (res != -1 && tv != NULL) {
 		struct timeval now;
@@ -2172,6 +2230,9 @@ _event_debugx (
 		 * timeout value and re-add the event.
 		 *
 		 * If tv_is_absolute, this was already set.
+		 * 
+		 * 对于永久超时事件，我们记住超时值并重新添加事件。如果 tv_is_absolute ，则此值已设置，不用再设置。
+		 * 
 		 */
 		if (ev->ev_closure == EV_CLOSURE_PERSIST && !tv_is_absolute)
 			ev->ev_io_timeout = *tv;
@@ -2179,6 +2240,11 @@ _event_debugx (
 		/*
 		 * we already reserved memory above for the case where we
 		 * are not replacing an existing timeout.
+		 * 
+		 * 
+		 * 如果当前事件处理器已经被插入通用定时器队列或者时间堆中，则先删除它
+		 * 
+		 * @note 我们已经在上面保留了内存，防止不替换已有的timeout分量。
 		 */
 		if (ev->ev_flags & EVLIST_TIMEOUT) {
 			/* XXX I believe this is needless. */
@@ -2189,15 +2255,23 @@ _event_debugx (
 
 		/* Check if it is active due to a timeout.  Rescheduling
 		 * this timeout before the callback can be executed
-		 * removes it from the active list. */
+		 * removes it from the active list.
+		 * 
+		 * 检查它是否由于超时而处于活动状态。则将其从活动事件队列中删除，避免其回调被执行。
+		 *  */
 		if ((ev->ev_flags & EVLIST_ACTIVE) &&
 		    (ev->ev_res & EV_TIMEOUT)) {
 			if (ev->ev_events & EV_SIGNAL) {
 				/* See if we are just active executing
 				 * this event in a loop
+					看看我们是否只是在循环中执行此事件
 				 */
-				if (ev->ev_ncalls && ev->ev_pncalls) {
-					/* Abort loop */
+				if (ev->ev_ncalls && ev->ev_pncalls) {	//ev->ev_pncalls如果非0，则它指向 ev_ncalls
+					/* 终止信号处理循环 
+						对于信号处理事件， 需要将ncalls成员置0（在之前提到过，对于信号处理，在信号触发时，ncalls指定回调函数被执行的次数）
+						来干净的停止事件处理。
+						
+					*/
 					*ev->ev_pncalls = 0;
 				}
 			}
@@ -2210,6 +2284,7 @@ _event_debugx (
 		common_timeout = is_common_timeout(tv, base);
 		if (tv_is_absolute) {
 			ev->ev_timeout = *tv;
+		//判定定时器应该被插入通用定时器队列还是插入时间堆
 		} else if (common_timeout) {
 			struct timeval tmp = *tv;
 			tmp.tv_usec &= MICROSECONDS_MASK;
@@ -2217,6 +2292,7 @@ _event_debugx (
 			ev->ev_timeout.tv_usec |=
 			    (tv->tv_usec & ~MICROSECONDS_MASK);
 		} else {
+			//加上系统时间，获取定时器超时的绝对时间
 			evutil_timeradd(&now, tv, &ev->ev_timeout);
 		}
 
@@ -2235,16 +2311,22 @@ _event_debugx (
 			/* See if the earliest timeout is now earlier than it
 			 * was before: if so, we will need to tell the main
 			 * thread to wake up earlier than it would
-			 * otherwise. */
+			 * otherwise.
+			 * 
+			 * 看看最早的超时事件现在是否比以前早：如果是，我们需要告诉主线程比以前更早醒来。
+			 */
 			if (min_heap_elt_is_top(ev))
 				notify = 1;
 		}
 	}
 
-	/* if we are not in the right thread, we need to wake up the loop */
+	/* if we are not in the right thread, we need to wake up the loop
+		如果我们不在正确的线程中，我们需要唤醒主线程中的循环
+	 */
 	if (res != -1 && notify && EVBASE_NEED_NOTIFY(base))
 		evthread_notify_base(base);
 
+	//记录一下，有个ev被添加了
 	_event_debug_note_add(ev);
 
 	return (res);
@@ -2495,6 +2577,11 @@ out:
  * against the last time we checked.  Not needed when using clock monotonic.
  * If time is running backwards, we adjust the firing time of every event by
  * the amount that time seems to have jumped.
+ * 
+ * 通过将当前时间与上次检查的时间进行比较来确定时间是否单调递增。
+ * 如果时间在倒退，我们会根据时间跳跃量 off 来重新调整每个事件的触发时间（直接加上这个偏移量）。
+ * 
+ * 使用 monotonic 时钟时不需要调用这个。
  */
 static void
 timeout_correct(struct event_base *base, struct timeval *tv)
@@ -2505,6 +2592,7 @@ timeout_correct(struct event_base *base, struct timeval *tv)
 	struct timeval off;
 	int i;
 
+	//有单调时钟，啥都不做
 	if (use_monotonic)
 		return;
 
@@ -2548,7 +2636,9 @@ timeout_correct(struct event_base *base, struct timeval *tv)
 	base->event_tv = *tv;
 }
 
-/* Activate every event whose timeout has elapsed. */
+/* Activate every event whose timeout has elapsed. 
+	激活已经超时的所有事件
+*/
 static void
 timeout_process(struct event_base *base)
 {
@@ -2646,11 +2736,16 @@ insert_common_timeout_inorder(struct common_timeout_list *ctl,
 	    ev_timeout_pos.ev_next_with_common_timeout);
 }
 
+/**
+ * 
+ * 将时间处理器加入各种队列
+ * @param queue 指示插入哪个队列
+*/
 static void
 event_queue_insert(struct event_base *base, struct event *ev, int queue)
 {
 	EVENT_BASE_ASSERT_LOCKED(base);
-
+	//防止激活事件的重复插入
 	if (ev->ev_flags & queue) {
 		/* Double insertion is possible for active events */
 		if (queue & EVLIST_ACTIVE)
@@ -2664,22 +2759,27 @@ event_queue_insert(struct event_base *base, struct event *ev, int queue)
 	if (~ev->ev_flags & EVLIST_INTERNAL)
 		base->event_count++;
 
-	ev->ev_flags |= queue;
+	ev->ev_flags |= queue;			//标记这个事件已经被添加过
 	switch (queue) {
+	//将IO事件或者信号事件加入注册事件队列
 	case EVLIST_INSERTED:
 		TAILQ_INSERT_TAIL(&base->eventqueue, ev, ev_next);
 		break;
+	//将就绪事件加入活动事件队列
 	case EVLIST_ACTIVE:
 		base->event_count_active++;
 		TAILQ_INSERT_TAIL(&base->activequeues[ev->ev_pri],
 		    ev,ev_active_next);
 		break;
+	//将定时器加入通用定时器队列或时间堆
 	case EVLIST_TIMEOUT: {
 		if (is_common_timeout(&ev->ev_timeout, base)) {
+			//常见定时器加入通用定时器队列
 			struct common_timeout_list *ctl =
 			    get_common_timeout_list(base, &ev->ev_timeout);
 			insert_common_timeout_inorder(ctl, ev);
 		} else
+			//非常见定时器加入时间堆
 			min_heap_push(&base->timeheap, ev);
 		break;
 	}

@@ -58,7 +58,7 @@ fifo_read(evutil_socket_t fd, short event, void *arg)
 	len = read(fd, buf, sizeof(buf) - 1);
 
 	if (len == -1) {
-		perror("read");
+		perror("read -1");
 		return;
 	} else if (len == 0) {
 		fprintf(stderr, "Connection closed\n");
@@ -123,9 +123,9 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	/* Linux pipes are broken, we need O_RDWR读写模式 instead of O_RDONLY只读模式 */
+	/* Linux pipes are broken, we need O_RDWR 读写模式 instead of O_RDONLY只读模式 */
 #ifdef __linux
-	socket = open(fifo, O_RDWR | O_NONBLOCK, 0);
+	socket = open(fifo, O_RDWR | O_NONBLOCK, 0);		//非阻塞的句柄，不能使用read
 #else
 	socket = open(fifo, O_RDONLY | O_NONBLOCK, 0);
 #endif
@@ -147,12 +147,16 @@ main(int argc, char **argv)
 	event_set(&evfifo, (evutil_socket_t)socket, EV_READ, fifo_read, &evfifo);
 #else
 	//创建event事件处理器对象，监控socket事件，event内部存有reactor对象的引用，此接口的reactor对象是current-reactor
+
+	//所有新创建的事件都处于已初始化和非未决状态 ,调用 event_add()可以使其成为未决的。
 	event_set(&evfifo, socket, EV_READ, fifo_read, &evfifo);
 	/// 	event对象句柄
 #endif
 
 	/* Add it to the active events, without a timeout 
 	立即将本事件处理器添加到自身reactor对象的激活事件队列*/
+	//在非未决的事件上调用 event_add()将使其在配置的 event_base 中成为未决的。成功时 函数返回0,失败时返回-1。
+	//如果 tv 为 NULL,添加的事件不会超时。否则, tv 以秒和微秒指定超时值。
 	event_add(&evfifo, NULL);
 
 	//事件分发，没有指定用哪个reactor，因为这个函数会使用current的reactor进行分发

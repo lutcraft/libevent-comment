@@ -172,6 +172,8 @@ evsig_init(struct event_base *base)
 	 * Our signal handler is going to write to one end of the socket
 	 * pair to wake up our event loop.  The event loop then scans for
 	 * signals that got delivered.
+	 * 
+	 * 我们的信号处理程序将写入套接字对的一端，以唤醒我们的事件循环。然后，事件循环扫描所传递的信号。
 	 */
 	if (evutil_socketpair(
 		    AF_UNIX, SOCK_STREAM, 0, base->sig.ev_signal_pair) == -1) {

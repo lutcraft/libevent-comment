@@ -85,7 +85,9 @@ struct event_change {
 void event_changelist_init(struct event_changelist *changelist);
 /** Remove every change in the changelist, and make corresponding changes
  * in the event maps in the base.  This function is generally used right
- * after making all the changes in the changelist. */
+ * after making all the changes in the changelist.
+ * 删除更改列表中的每个更改，并在库中的事件映射中进行相应的更改。此函数通常在更改列表中进行所有更改后立即使用。
+ *  */
 void event_changelist_remove_all(struct event_changelist *changelist,
     struct event_base *base);
 /** Free all memory held in a changelist. */

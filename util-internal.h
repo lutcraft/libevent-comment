@@ -276,6 +276,10 @@ int evutil_sockaddr_is_loopback(const struct sockaddr *sa);
  */
 const char *evutil_format_sockaddr_port(const struct sockaddr *sa, char *out, size_t outlen);
 
+/**
+ * linux时间转化为毫秒数
+ * 
+*/
 long evutil_tv_to_msec(const struct timeval *tv);
 
 int evutil_hex_char_to_int(char c);

@@ -114,6 +114,10 @@ int min_heap_erase(min_heap_t* s, struct event* e)
 	return -1;
 }
 
+/**
+ * 为最小堆预留空间
+ * 
+*/
 int min_heap_reserve(min_heap_t* s, unsigned n)
 {
 	if (s->a < n)

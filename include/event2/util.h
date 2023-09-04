@@ -308,6 +308,7 @@ int evutil_make_listen_socket_reuseable(evutil_socket_t sock);
 
 /** Do platform-specific operations as needed to close a socket upon a
     successful execution of one of the exec*() functions.
+    在成功执行某个exec*（）函数后，子进程将不继承父进程标记为FD_CLOEXEC的句柄。
 
     @param sock The socket to be closed
     @return 0 on success, -1 on failure

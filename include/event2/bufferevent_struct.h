@@ -61,11 +61,17 @@ struct event_watermark {
 
 /**
   Shared implementation of a bufferevent.
+  缓冲器事件的实现
 
   This type is exposed only because it was exposed in previous versions,
   and some people's code may rely on manipulating it.  Otherwise, you
   should really not rely on the layout, size, or contents of this structure:
   it is fairly volatile, and WILL change in future versions of the code.
+
+	此类型之所以被公开，只是因为它在以前的版本中被公开了，有些人的代码可能会依赖于对它的操作。
+	否则，你真的不应该依赖于此结构的布局、大小或内容：它相当不稳定，在未来的代码版本中会发生变化。
+
+	每个 bufferevent 有两个数据相关的回调:一个读取回调和一个写入回调。
 **/
 struct bufferevent {
 	/** Event base for which this bufferevent was created. */
@@ -94,10 +100,12 @@ struct bufferevent {
 	struct event_watermark wm_read;
 	struct event_watermark wm_write;
 
-	bufferevent_data_cb readcb;
-	bufferevent_data_cb writecb;
+	bufferevent_data_cb readcb;	//默认情况下,从底层传输端口读取了任意量的数据之后会调用读取回调 ;
+	bufferevent_data_cb writecb;	//输出缓冲区中足够量的数据被清空到底层传输端口后,会调用写入回调
 	/* This should be called 'eventcb', but renaming it would break
-	 * backward compatibility */
+	 * backward compatibility 
+	 这应该被称为“eventcb”，但重命名它会破坏向后兼容性
+	 */
 	bufferevent_event_cb errorcb;
 	void *cbarg;
 

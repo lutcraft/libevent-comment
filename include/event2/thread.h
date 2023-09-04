@@ -133,6 +133,9 @@ struct timeval;
 /** This structure describes the interface a threading library uses for
  * condition variables.  It's used to tell evthread_set_condition_callbacks
  * how to use locking on this platform.
+ * 
+ * 此结构描述了线程库用于条件变量的接口。它用于告诉 evthread_set_condition_callbacks 如何在此平台上使用锁。
+ * 
  */
 struct evthread_condition_callbacks {
 	/** The current version of the conditions API.  Set this to

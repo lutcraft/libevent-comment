@@ -41,9 +41,13 @@ struct evsig_info {
 	struct event ev_signal;
 	/* Socketpair used to send notifications from the signal handler 用于从信号处理程序发送通知的套接字对*/
 	evutil_socket_t ev_signal_pair[2];
-	/* True iff we've added the ev_signal event yet. */
+	/* True iff we've added the ev_signal event yet.
+		如果我们已经添加了ev_signal事件，则为True。
+	 */
 	int ev_signal_added;
-	/* Count of the number of signals we're currently watching. */
+	/* Count of the number of signals we're currently watching.
+		当前后端监听的信号个数
+	 */
 	int ev_n_signals_added;
 
 	/* Array of previous signal handler objects before Libevent started

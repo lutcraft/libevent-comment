@@ -87,7 +87,7 @@ struct event_base;
 struct event {
 	TAILQ_ENTRY(event) ev_active_next;
 	TAILQ_ENTRY(event) ev_next;
-	/* for managing timeouts */
+	/* for managing timeouts 用于管理超时 */
 	union {
 		TAILQ_ENTRY(event) ev_next_with_common_timeout;
 		int min_heap_idx;
@@ -114,7 +114,7 @@ struct event {
 
 	short ev_events;
 	short ev_res;		/* result passed to event callback */
-	short ev_flags;
+	short ev_flags;			//标志本事件已经加入哪些队列
 	ev_uint8_t ev_pri;	/* smaller numbers are higher priority */
 	ev_uint8_t ev_closure;
 	struct timeval ev_timeout;

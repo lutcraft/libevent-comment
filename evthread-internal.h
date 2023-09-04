@@ -52,12 +52,16 @@ extern struct evthread_condition_callbacks _evthread_cond_fns;
 extern unsigned long (*_evthread_id_fn)(void);
 extern int _evthread_lock_debugging_enabled;
 
-/** Return the ID of the current thread, or 1 if threading isn't enabled. */
+/** Return the ID of the current thread, or 1 if threading isn't enabled.
+ * 返回当前线程的ID，如果未启用线程，则返回1。
+ */
 #define EVTHREAD_GET_ID() \
 	(_evthread_id_fn ? _evthread_id_fn() : 1)
 
 /** Return true iff we're in the thread that is currently (or most recently)
- * running a given event_base's loop. Requires lock. */
+ * running a given event_base's loop. Requires lock.
+ * 检查后端是或否运行在当前线程，入座在返回true，需要锁
+ *  */
 #define EVBASE_IN_THREAD(base)				 \
 	(_evthread_id_fn == NULL ||			 \
 	(base)->th_owner_id == _evthread_id_fn())
@@ -165,7 +169,11 @@ EVLOCK_TRY_LOCK(void *lock)
 /** Wait until the condition 'cond' is signalled.  Must be called while
  * holding 'lock'.  The lock will be released until the condition is
  * signalled, at which point it will be acquired again.  Returns 0 for
- * success, -1 for failure. */
+ * success, -1 for failure. 
+ * 
+ * 等待条件“cond”。必须在持有“lock”时调用。调用后，锁将被释放，直到conidition满足，锁会再次被获取。
+ * 返回0表示成功，返回-1表示失败。
+ * */
 #define EVTHREAD_COND_WAIT(cond, lock)					\
 	( (cond) ? _evthread_cond_fns.wait_condition((cond), (lock), NULL) : 0 )
 /** As EVTHREAD_COND_WAIT, but gives up after 'tv' has elapsed.  Returns 1

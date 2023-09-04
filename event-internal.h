@@ -51,7 +51,9 @@ extern "C" {
 #define ev_ncalls	_ev.ev_signal.ev_ncalls
 #define ev_pncalls	_ev.ev_signal.ev_pncalls
 
-/* Possible values for ev_closure in struct event. */
+/* Possible values for ev_closure in struct event. 
+	event结构中ev_closure的可能值。
+*/
 #define EV_CLOSURE_NONE 0
 #define EV_CLOSURE_SIGNAL 1
 #define EV_CLOSURE_PERSIST 2
@@ -89,28 +91,45 @@ struct eventop {
 	 * associated with the fd by the evmap; its size is defined by the
 	 * fdinfo field below.  It will be set to 0 the first time the fd is
 	 * added.  The function should return 0 on success and -1 on error.
+	 * 
+	 * 启用对给定fd或信号的读取/写入。
+	 * 'events“将是我们试图启用的事件：EV_READ、EV_WRITE、EV_SIGNAL和EV_ET中的一个或多个。
+	 * ”old将是以前在此fd上启用的那些事件fdinfo’将是通过evmap与fd相关联的结构；
+	 * 其大小由下面的fdinfo字段定义。第一次添加fd时，它将被设置为0。
+	 * 函数应在成功时返回0，在出错时返回-1。
+	 * 
 	 */
 	int (*add)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo);
-	/** As "add", except 'events' contains the events we mean to disable. */
+	/** As "add", except 'events' contains the events we mean to disable. 
+	 * 和“添加”类似，除了“events”是我们想要禁用的事件。
+	*/
 	int (*del)(struct event_base *, evutil_socket_t fd, short old, short events, void *fdinfo);
 	/** Function to implement the core of an event loop.  It must see which
 	    added events are ready, and cause event_active to be called for each
 	    active event (usually via event_io_active or such).  It should
 	    return 0 on success and -1 on error.
+		event loop的实现。
+		它必须查看哪些添加的事件已准备就绪，并为每个活动事件调用event_active回调（通常通过event_io_active等）。
+		成功时应返回0，出错时应返回-1。
 	 */
 	int (*dispatch)(struct event_base *, struct timeval *);
 	/** Function to clean up and free our data from the event_base. */
 	void (*dealloc)(struct event_base *);
 	/** Flag: set if we need to reinitialize the event base after we fork.
+	 * 标识进程fork后是否需要重新实例化后端，epoll是需要重新实例化
 	 */
 	int need_reinit;
 	/** Bit-array of supported event_method_features that this backend can
-	 * provide. */
+	 * provide.
+	 * 此后端可以提供的受支持的 event_method_features 的位数组。
+	 */
 	enum event_method_feature features;
 	/** Length of the extra information we should record for each fd that
 	    has one or more active events.  This information is recorded
 	    as part of the evmap entry for each fd, and passed as an argument
 	    to the add and del functions above.
+		fd记录的额外信息的长度。
+		这些信息被记录为每个fd的 evmap 条目的一部分，并作为参数传递给上面的add和del函数。
 	 */
 	size_t fdinfo_len;
 };
@@ -211,14 +230,18 @@ struct event_base {
 	/** Function pointers used to describe the backend that this event_base
 	 * uses for signals */
 	const struct eventop *evsigsel;
-	/** Data to implement the common signal handelr code. 实现通用信号handel处理代码的数据 */
+	/** Data to implement the common signal handelr code. 实现通用信号handel 处理的代码和数据 */
 	struct evsig_info sig;
 
 	/** Number of virtual events */
 	int virtual_event_count;
-	/** Number of total events added to this event_base */
+	/** Number of total events added to this event_base
+	 * 添加到此event_base的事件总数
+	 */
 	int event_count;
-	/** Number of total events active in this event_base */
+	/** Number of total events active in this event_base
+	 * 此event_base中活动的事件总数
+	 */
 	int event_count_active;
 
 	/** Set if we should terminate the loop once we're done processing
@@ -226,21 +249,29 @@ struct event_base {
 	int event_gotterm;
 	/** Set if we should terminate the loop immediately */
 	int event_break;
-	/** Set if we should start a new instance of the loop immediately. */
+	/** Set if we should start a new instance of the loop immediately.
+	 * 设置是否应立即启动一个event-loop的新实例
+	 * 
+	 */
 	int event_continue;
 
-	/** The currently running priority of events */
+	/** The currently running priority of events
+	 * 当前正在运行的事件优先级
+	 */
 	int event_running_priority;
 
 	/** Set if we're running the event_base_loop function, to prevent
-	 * reentrant invocation. */
+	 * reentrant invocation.
+	 * 
+	 * 如果我们正在运行event_base_loop函数，请进行设置，以防止重新进入调用。
+	 *  */
 	int running_loop;
 
 	/* Active event management. 活动事件管理 */
 	/** An array of nactivequeues queues for active events (ones that
 	 * have triggered, and whose callbacks need to be called).  Low
 	 * priority numbers are more important, and stall higher ones.
-	 * 活动事件的队列（已触发且需要调用其回调的事件）。根据优先级不同，同一个后端对象拥有多个活动事件队列
+	 * 激活事件的队列（已触发且需要调用其回调的事件）。根据优先级不同，同一个后端对象拥有多个活动事件队列
 	 * 优先级越低，事件越重要，可能会拖慢更高优先级的事件
 	 */
 	struct event_list *activequeues;
@@ -252,7 +283,9 @@ struct event_base {
 	/** An array of common_timeout_list* for all of the common timeout
 	 * values we know. */
 	struct common_timeout_list **common_timeout_queues;
-	/** The number of entries used in common_timeout_queues */
+	/** The number of entries used in common_timeout_queues
+	 * 通用定时器 common_timeout_queues 队列中的条目数
+	 */
 	int n_common_timeouts;
 	/** The total size of common_timeout_queues. */
 	int n_common_timeouts_allocated;
@@ -272,7 +305,7 @@ struct event_base {
 	struct event_signal_map sigmap;
 
 	/** All events that have been enabled (added) in this event_base
-	 * 激活事件队列，所有被add的事件，将会被加到这里
+	 * 注册事件队列，所有被add的事件，将会被加到这里
 	 */
 	struct event_list eventqueue;
 
@@ -295,16 +328,26 @@ struct event_base {
 
 #ifndef _EVENT_DISABLE_THREAD_SUPPORT
 	/* threading support */
-	/** The thread currently running the event_loop for this base */
+	/** The thread currently running the event_loop for this base
+	 * 当前运行event_loop的线程id
+	 */
 	unsigned long th_owner_id;
-	/** A lock to prevent conflicting accesses to this event_base */
+	/** A lock to prevent conflicting accesses to this event_base
+	 * 用于防止对此event_base进行冲突访问的锁
+	 */
 	void *th_base_lock;
-	/** The event whose callback is executing right now */
+	/** The event whose callback is executing right now 
+	 * 后端当前正在处理的ev
+	*/
 	struct event *current_event;
 	/** A condition that gets signalled when we're done processing an
-	 * event with waiters on it. */
+	 * event with waiters on it.
+	 * 当我们处理完一个有 current_event_waiters 的事件时，符合cond会发出信号通知。
+	 *  */
 	void *current_event_cond;
-	/** Number of threads blocking on current_event_cond. */
+	/** Number of threads blocking on current_event_cond. 
+	 * block在 current_event_cond 上的线程数
+	*/
 	int current_event_waiters;
 #endif
 
@@ -313,20 +356,26 @@ struct event_base {
 	struct event_iocp_port *iocp;
 #endif
 
-	/** Flags that this base was configured with */
+	/** Flags that this base was configured with
+	 * 后端配置flag
+	 */
 	enum event_base_config_flag flags;
 
 	/* Notify main thread to wake up break, etc. */
 	/** True if the base already has a pending notify, and we don't need
-	 * to add any more. */
+	 * to add any more.
+	 * 如果base已经有一个挂起的notify，并且我们不需要再添加任何通知，则为True。
+	 */
 	int is_notify_pending;
 	/** A socketpair used by some th_notify functions to wake up the main
-	 * thread. 一些 th_notify 函数使用的套接字对来唤醒主线程。 */
+	 * thread. 在 th_notify_fn 中可能会使用的套接字对，用来唤醒主线程。 */
 	evutil_socket_t th_notify_fd[2];
 	/** An event used by some th_notify functions to wake up the main
 	 * thread. */
 	struct event th_notify;
-	/** A function used to wake up the main thread from another thread. */
+	/** A function used to wake up the main thread from another thread.、
+	 * 用于从另一个线程唤醒主线程的函数
+	 */
 	int (*th_notify_fn)(struct event_base *base);
 };
 
