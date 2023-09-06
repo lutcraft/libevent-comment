@@ -94,8 +94,8 @@ struct eventop {
 	 * 
 	 * 启用对给定fd或信号的读取/写入。
 	 * 'events“将是我们试图启用的事件：EV_READ、EV_WRITE、EV_SIGNAL和EV_ET中的一个或多个。
-	 * ”old将是以前在此fd上启用的那些事件fdinfo’将是通过evmap与fd相关联的结构；
-	 * 其大小由下面的fdinfo字段定义。第一次添加fd时，它将被设置为0。
+	 * “old”将是以前在此fd上启用的那些事件。
+	 * “fdinfo”将是evmap与fd关联的结构,其大小由下面的fdinfo字段定义。第一次添加fd时，它将被设置为0。
 	 * 函数应在成功时返回0，在出错时返回-1。
 	 * 
 	 */
@@ -159,9 +159,9 @@ HT_HEAD(event_io_map, event_map_entry);
 struct event_signal_map {
 	/* An array of evmap_io * or of evmap_signal *; empty entries are
 	 * set to NULL.
-	 evmap_io*或evmap_signal*的数组；空条目设置为NULL。
+	 evmap_io * 或 evmap_signal*的数组；空条目设置为NULL。
 	 */
-	void **entries;
+	void **entries;		//每一个都是一个 evmap_signal + fdinfo 的指针 ，evmap_signal是一个链表		(sizeof(struct evmap_io) + evsel->fdinfo_len)
 	/* The number of entries available in entries */
 	int nentries;
 };
@@ -216,9 +216,9 @@ struct event_base {
 	const struct eventop *evsel;
 
 	/** Pointer to backend-specific data.
-	 * 指向每一个初始化好的后端实例
+	 * 指向每一个初始化好的后端实例的数据信息，是一个epollop
 	 */
-	void *evbase;
+	void *evbase;	//epolllop存储了epoll_wait的所需信息
 
 	/** List of changes to tell backend about at next dispatch.  Only used
 	 * by the O(1) backends.
@@ -297,11 +297,13 @@ struct event_base {
 	struct deferred_cb_queue defer_queue;
 
 	/** Mapping from file descriptors to enabled (added) events 
-	 * 从文件描述符到已启用（添加）事件的映射
+	 * 从 文件描述符 到 激活（added）事件的映射
 	*/
 	struct event_io_map io;
 
-	/** Mapping from signal numbers to enabled (added) events. */
+	/** Mapping from signal numbers to enabled (added) events.
+	 * 从 信号编号 到 激活（added）事件的映射。
+	 */
 	struct event_signal_map sigmap;
 
 	/** All events that have been enabled (added) in this event_base

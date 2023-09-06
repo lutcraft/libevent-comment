@@ -1441,6 +1441,11 @@ event_process_active_single_queue(struct event_base *base,
    *breakptr becomes set to 1, stop.  Requires that we start out holding
    the lock on 'queue'; releases the lock around 'queue' for each deferred_cb
    we process.
+
+	最多处理'queue'中的defered_cb条目的MAX_DEFERRED。
+	如果breakptr设置为1，请停止。
+	要求我们从锁定“队列”开始；为我们处理的每个deferred_cb释放“queue”周围的锁。
+
  */
 static int
 event_process_deferred_callbacks(struct deferred_cb_queue *queue, int *breakptr)
@@ -1455,7 +1460,7 @@ event_process_deferred_callbacks(struct deferred_cb_queue *queue, int *breakptr)
 		--queue->active_count;
 		UNLOCK_DEFERRED_QUEUE(queue);
 
-		cb->cb(cb, cb->arg);
+		cb->cb(cb, cb->arg);			//调用回调
 
 		LOCK_DEFERRED_QUEUE(queue);
 		if (*breakptr)
@@ -1471,8 +1476,9 @@ event_process_deferred_callbacks(struct deferred_cb_queue *queue, int *breakptr)
  * Active events are stored in priority queues.  Lower priorities are always
  * process before higher priorities.  Low priority events can starve high
  * priority ones.
+ * 
+ * 活动事件存储在优先级队列中。低优先级总是先处理后处理。低优先级事件可能会使高优先级事件饥饿。
  */
-
 static int
 event_process_active(struct event_base *base)
 {
@@ -1497,7 +1503,7 @@ event_process_active(struct event_base *base)
 	}
 
 	event_process_deferred_callbacks(&base->defer_queue,&base->event_break);
-	base->event_running_priority = -1;
+	base->event_running_priority = -1;			//下一个优先级，做一样的事情，在外层大循环控制
 	return c;
 }
 
@@ -1686,7 +1692,8 @@ event_base_loop(struct event_base *base, int flags)
 		gettime(base, &base->event_tv);
 		//清除缓存时间
 		clear_time_cache(base);
-		//epoll接口分发，内部是一个epoll_wait，并且调用活动事件的回调
+
+		//epoll接口分发，内部是一个epoll_wait，将事件加入激活事件队列
 		res = evsel->dispatch(base, tv_p);
 
 		if (res == -1) {
@@ -2478,7 +2485,7 @@ event_active_nolock(struct event *ev, int res, short ncalls)
 		ev->ev_ncalls = ncalls;
 		ev->ev_pncalls = NULL;
 	}
-
+	//事件加入激活队列
 	event_queue_insert(base, ev, EVLIST_ACTIVE);
 
 	if (EVBASE_NEED_NOTIFY(base))

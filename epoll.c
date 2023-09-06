@@ -182,6 +182,9 @@ epoll_op_to_string(int op)
 	    "???";
 }
 
+/**
+ * 是对epoll_ctrl的封装，之所以这么复杂只是为了重试
+*/
 static int
 epoll_apply_one_change(struct event_base *base,
     struct epollop *epollop,
@@ -199,6 +202,11 @@ epoll_apply_one_change(struct event_base *base,
 		   want to remain.  But if we want to delete the last event,
 		   we say op="DEL" and set events=the remaining events.  What
 		   fun!
+
+		   这里的逻辑有点棘手。
+		   如果我们之前在fd上没有设置事件， 那么我们需要设置op=“ADD”并设置events=我们想要添加的事件。
+		   如果我们之前在fd上设置了任何事件，并且我们希望任何事件都保留在fd上，那么我们需要说op=“MOD”，并设置events=我们想要保留的事件。
+		   但是，如果我们想删除最后一个事件，我们说op=“ DEL ”，并设置events=我们想要保留的事件。真有趣！
 		*/
 
 		/* TODO: Turn this into a switch or a table lookup. */
@@ -279,13 +287,14 @@ epoll_apply_one_change(struct event_base *base,
 				/* If a MOD operation fails with ENOENT, the
 				 * fd was probably closed and re-opened.  We
 				 * should retry the operation as an ADD.
+				 * 如果使用ENOENT的MOD操作失败，则fd可能已关闭并重新打开。我们应该用ADD重试该操作。
 				 */
 				if (epoll_ctl(epollop->epfd, EPOLL_CTL_ADD, ch->fd, &epev) == -1) {
 					event_warn("Epoll MOD(%d) on %d retried as ADD; that failed too",
 					    (int)epev.events, ch->fd);
 					return -1;
 				} else {
-					event_debug(("Epoll MOD(%d) on %d retried as ADD; succeeded.",
+					event_debug(("Epoll MOD(%d) on %d retried as ADD; succeeded.",		//这种不return的，会反复重试
 						(int)epev.events,
 						ch->fd));
 				}
@@ -398,7 +407,7 @@ static int
 epoll_dispatch(struct event_base *base, struct timeval *tv)
 {
 	struct epollop *epollop = base->evbase;
-	struct epoll_event *events = epollop->events;
+	struct epoll_event *events = epollop->events;		//后端存了eopll_wait后通知的事件列表
 	int i, res;
 	long timeout = -1;
 
@@ -411,12 +420,13 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 		}
 	}
 
-	//应用epoll监控的fdhd变更
+	//在epoll_wait之前应用所有的change事件，里面是epoll_ctl
 	epoll_apply_changes(base);
 	event_changelist_remove_all(&base->changelist, base);
 
 	EVBASE_RELEASE_LOCK(base, th_base_lock);
 
+	//int epoll_wait (int __epfd, struct epoll_event *__events, int __maxevents, int __timeout);
 	res = epoll_wait(epollop->epfd, events, epollop->nevents, timeout);
 
 	EVBASE_ACQUIRE_LOCK(base, th_base_lock);
@@ -446,17 +456,17 @@ epoll_dispatch(struct event_base *base, struct timeval *tv)
 				ev |= EV_WRITE;
 		}
 
-		if (!ev)
+		if (!ev)			//没事件就跳了
 			continue;
 
-		//调用event的回调
+		//将io事件设置为激活
 		evmap_io_active(base, events[i].data.fd, ev | EV_ET);
 	}
 
 	if (res == epollop->nevents && epollop->nevents < MAX_NEVENT) {
 		/* We used all of the event space this time.  We should
 		   be ready for more events next time.
-		   这次我们使用了所有的event空间。我们应该为下次更多的event做好准备。
+		   如果这次我们使用了所有的events空间，则需要对events进行扩容，空间翻倍，为下次更多的event做好准备。
 		    */
 		int new_nevents = epollop->nevents * 2;
 		struct epoll_event *new_events;

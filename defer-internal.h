@@ -53,7 +53,7 @@ struct deferred_cb {
 /** A deferred_cb_queue is a list of deferred_cb that we can add to and run. */
 struct deferred_cb_queue {
 	/** Lock used to protect the queue. */
-	void *lock;
+	void *lock;			//队列锁，对队列增删改查需要先获取锁，调用回调过程中可以解锁
 
 	/** How many entries are in the queue? */
 	int active_count;

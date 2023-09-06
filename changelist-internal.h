@@ -54,7 +54,7 @@ struct event_change {
 	/** The fd or signal whose events are to be changed */
 	evutil_socket_t fd;
 	/* The events that were enabled on the fd before any of these changes
-	   were made.  May include EV_READ or EV_WRITE. */
+	   were made.  May include EV_READ or EV_WRITE. 在进行任何更改之前在fd上已经启用的事件。可能包括EV_READ或EV_WRITE。 */
 	short old_events;
 
 	/* The changes that we want to make in reading and writing on this fd.
@@ -93,7 +93,10 @@ void event_changelist_remove_all(struct event_changelist *changelist,
 /** Free all memory held in a changelist. */
 void event_changelist_freemem(struct event_changelist *changelist);
 
-/** Implementation of eventop_add that queues the event in a changelist. */
+/** Implementation of eventop_add that queues the event in a changelist. 
+ * 
+ * eventop_add的实现，将事件排入变更列表。利用变更列表进行add
+*/
 int event_changelist_add(struct event_base *base, evutil_socket_t fd, short old, short events,
     void *p);
 /** Implementation of eventop_del that queues the event in a changelist. */

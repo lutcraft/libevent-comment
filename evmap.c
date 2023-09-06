@@ -54,6 +54,7 @@
 /** An entry for an evmap_io list: notes all the events that want to read or
 	write on a given fd, and the number of each.
 	evmap_io列表的一个条目：记录要在给定fd上读取或写入的所有事件，以及每个事件的数量。
+	fd是evmap_io列表的下标
   */
 struct evmap_io {
 	struct event_list events;	//某个fd上的事件列表
@@ -358,11 +359,11 @@ evmap_io_add(struct event_base *base, evutil_socket_t fd, struct event *ev)
 	ctx->nread = (ev_uint16_t) nread;
 	ctx->nwrite = (ev_uint16_t) nwrite;
 
-//	TAILQ_INSERT_TAIL(&ctx->events, ev, ev_io_next); 将事件添加到IO事件队列中
+	// TAILQ_INSERT_TAIL(&ctx->events, ev, ev_io_next); //将事件添加到IO事件队列中
 	ev->_ev.ev_io.ev_io_next.tqe_next = NULL;
- 	ev->_ev.ev_io.ev_io_next.tqe_prev = (&ctx->events)->tqh_last;
-  	*(&ctx->events)->tqh_last = ev;
- 	(&ctx->events)->tqh_last = &ev->_ev.ev_io.ev_io_next.tqe_next;
+ 	ev->_ev.ev_io.ev_io_next.tqe_prev = (&ctx->events)->tqh_last;	//我的前置是老尾
+  	*(&ctx->events)->tqh_last = ev;			//老尾的后置是我
+ 	(&ctx->events)->tqh_last = &ev->_ev.ev_io.ev_io_next.tqe_next;	//NULL
 
 
 	return (retval);
@@ -437,6 +438,7 @@ evmap_io_active(struct event_base *base, evutil_socket_t fd, short events)
 	GET_IO_SLOT(ctx, io, fd, evmap_io);
 
 	EVUTIL_ASSERT(ctx);
+	//遍历io事件fd映射表，调用每一个回调事件
 	TAILQ_FOREACH(ev, &ctx->events, ev_io_next) {
 		if (ev->ev_events & events)
 			event_active_nolock(ev, ev->ev_events & events, 1);
@@ -527,10 +529,11 @@ evmap_io_get_fdinfo(struct event_io_map *map, evutil_socket_t fd)
 
 /** Per-fd structure for use with changelists.  It keeps track, for each fd or
  * signal using the changelist, of where its entry in the changelist is.
+ * 用于变更列表的Per-fd结构。对于使用变更列表的每个fd或信号，它都会跟踪其在变更列表中的条目所在的位置。
  */
 struct event_changelist_fdinfo {
 	int idxplus1; /* this is the index +1, so that memset(0) will make it
-		       * a no-such-element */
+		       * a no-such-element 没有这样的元素*/
 };
 
 void
@@ -541,7 +544,9 @@ event_changelist_init(struct event_changelist *changelist)
 	changelist->n_changes = 0;
 }
 
-/** Helper: return the changelist_fdinfo corresponding to a given change. */
+/** Helper: return the changelist_fdinfo corresponding to a given change.
+ * 返回给定change对应的 changelist_fdinfo 。
+ */
 static inline struct event_changelist_fdinfo *
 event_change_get_fdinfo(struct event_base *base,
     const struct event_change *change)
@@ -550,7 +555,8 @@ event_change_get_fdinfo(struct event_base *base,
 	if (change->read_change & EV_CHANGE_SIGNAL) {
 		struct evmap_signal *ctx;
 		GET_SIGNAL_SLOT(ctx, &base->sigmap, change->fd, evmap_signal);
-		ptr = ((char*)ctx) + sizeof(struct evmap_signal);
+		// (ctx) = (struct evmap_signal *)((&base->sigmap)->entries[change->fd])	change->fd就是sigmap数组的下标,这里实际上是取到了一个event_list链表描述者的地址
+		ptr = ((char*)ctx) + sizeof(struct evmap_signal);		//根据这个chagne的fd，找到了对应change的fdinfo
 	} else {
 		struct evmap_io *ctx;
 		GET_IO_SLOT(ctx, &base->io, change->fd, evmap_io);
@@ -594,6 +600,10 @@ event_changelist_check(struct event_base *base)
 #define event_changelist_check(base)  ((void)0)
 #endif
 
+/**
+ * 清空changelist列表
+ * 
+*/
 void
 event_changelist_remove_all(struct event_changelist *changelist,
     struct event_base *base)
@@ -603,14 +613,14 @@ event_changelist_remove_all(struct event_changelist *changelist,
 	event_changelist_check(base);
 
 	for (i = 0; i < changelist->n_changes; ++i) {
-		struct event_change *ch = &changelist->changes[i];
-		struct event_changelist_fdinfo *fdinfo =
+		struct event_change *ch = &changelist->changes[i];		//第i个change
+		struct event_changelist_fdinfo *fdinfo =	//获取fdinfo的指针位置
 		    event_change_get_fdinfo(base, ch);
-		EVUTIL_ASSERT(fdinfo->idxplus1 == i + 1);
-		fdinfo->idxplus1 = 0;
+		EVUTIL_ASSERT(fdinfo->idxplus1 == i + 1);		//确保我们找对了，fdinfo是这个change在changelist中的下标+1
+		fdinfo->idxplus1 = 0;		//0代表这个记录无效
 	}
 
-	changelist->n_changes = 0;
+	changelist->n_changes = 0;			//总数为0
 
 	event_changelist_check(base);
 }
@@ -649,6 +659,9 @@ event_changelist_grow(struct event_changelist *changelist)
 /** Return a pointer to the changelist entry for the file descriptor or signal
  * 'fd', whose fdinfo is 'fdinfo'.  If none exists, construct it, setting its
  * old_events field to old_events.
+ * 
+ * 返回指向文件描述符或信号“fd”的 变更列表项 的指针，其 fdinfo 为“fdinfo”。如果不存在，则构造它，将其old_events字段设置为old_events。
+ * 
  */
 static struct event_change *
 event_changelist_get_or_construct(struct event_changelist *changelist,
